@@ -29,6 +29,14 @@ class SpecialCheckUser extends SpecialPage {
 		return true; // logging
 	}
 
+	public function userCanExecute( User $user ) {
+ 		return $user->isAllowed( 'checkuser' ) || $user->isAllowed( 'checkuser-limited' );
+ 	}
+
+ 	protected function hasFullAccess( User $user ) {
+ 		return $user->isAllowed( 'checkuser' );
+ 	}
+	
 	public function execute( $subpage ) {
 		$this->setHeaders();
 		$this->checkPermissions();
@@ -91,11 +99,47 @@ class SpecialCheckUser extends SpecialPage {
 			$name = $user;
 		}
 
+				$cidr = false;
+ 		$notself = false;
+ 		if ( !$this->hasFullAccess( $this->getUser() ) ) {
+ 			$myip = $this->getRequest()->getIP();
+ 			if ( $ip != '' && $ip != $myip ) {
+ 				if ( !IP::isValid( $ip ) ) {
+ 					// range
+ 					$cidr = true;
+ 				} else {
+ 					$notself = true;
+ 				}
+ 				$ip = '';
+ 			}
+
+ 			if ( $xff != '' && $xff != $myip ) {
+ 				if ( !IP::isValid( $xff ) ) {
+ 					// range
+ 					$cidr = true;
+ 				} else {
+ 					$notself = true;
+ 				}
+ 				$xff = '';
+ 			}
+
+ 			if ( $name != '' && $name != $this->getUser()->getName() ) {
+ 				$notself = true;
+ 				$user = '';
+ 			}
+
+ 			if ( $notself ) {
+ 				$this->getOutput()->addWikiMsg( 'checkuser-limited-notself' );
+ 			} elseif ( $cidr ) {
+ 				$this->getOutput()->addWikiMsg( 'checkuser-limited-nocidr' );
+ 			}
+ 		}
+		
 		$this->showIntroductoryText();
 		$this->showForm( $user, $checktype, $ip, $xff, $name, $period );
 
 		// Perform one of the various submit operations...
-		if ( $request->wasPosted() ) {
+		if ( $request->wasPosted() && !$notself && !$cidr ) {
 			if ( !$this->getUser()->matchEditToken( $request->getVal( 'wpEditToken' ) ) ) {
 				$out->wrapWikiMsg( '<div class="error">$1</div>', 'checkuser-token-fail' );
 			} elseif ( $request->getVal( 'action' ) === 'block' ) {
@@ -117,6 +161,9 @@ class SpecialCheckUser extends SpecialPage {
 			}
 		}
 		// Add CIDR calculation convenience JS form
+		if ( !$this->hasFullAccess( $this->getUser() ) ) {
+ 			return;
+ 		}
 		$this->addJsCIDRForm();
 		$out->addModules( 'ext.checkUser' );
 		$out->addModuleStyles( 'mediawiki.interface.helpers.styles' );
@@ -124,11 +171,17 @@ class SpecialCheckUser extends SpecialPage {
 
 	protected function showIntroductoryText() {
 		$cidrLimit = $this->getConfig()->get( 'CheckUserCIDRLimit' );
-		$this->getOutput()->addWikiMsg(
+		if ( $this->hasFullAccess( $this->getUser() ) ) {
+ 			$this->getOutput()->addWikiMsg(
 			'checkuser-summary',
 			$cidrLimit['IPv4'],
 			$cidrLimit['IPv6']
 		);
+ 			);
+ 		} else {
+ 			// limited users can't see the full log and can't do CIDR
+ 			$this->getOutput()->addWikiMsg( 'checkuser-summary-limited', $this->getUser()->getName(), $this->getRequest()->getIP());
+ 		}
 	}
 
 	/**
