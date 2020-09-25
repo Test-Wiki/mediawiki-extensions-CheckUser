@@ -182,8 +182,7 @@ class SpecialCheckUser extends SpecialPage {
 			'checkuser-summary',
 			$cidrLimit['IPv4'],
 			$cidrLimit['IPv6']
-		);
- 			);
+			);
  		} else {
  			// limited users can't see the full log and can't do CIDR
  			$this->getOutput()->addWikiMsg( 'checkuser-summary-limited', $this->getUser()->getName(), $this->getRequest()->getIP());
