@@ -4,7 +4,7 @@ use Wikimedia\Rdbms\IResultWrapper;
 
 class CheckUserLogPager extends ReverseChronologicalPager {
 	/**
-	 * @var array $searchConds
+	 * @var array
 	 */
 	protected $searchConds;
 
@@ -25,6 +25,8 @@ class CheckUserLogPager extends ReverseChronologicalPager {
 		$target = Linker::userLink( $row->cul_target_id, $row->cul_target_text ) .
 			Linker::userToolLinks( $row->cul_target_id, $row->cul_target_text );
 
+		$lang = $this->getLanguage();
+		$contextUser = $this->getUser();
 		// Give grep a chance to find the usages:
 		// checkuser-log-entry-userips, checkuser-log-entry-ipedits,
 		// checkuser-log-entry-ipusers, checkuser-log-entry-ipedits-xff
@@ -34,9 +36,9 @@ class CheckUserLogPager extends ReverseChronologicalPager {
 				'checkuser-log-entry-' . $row->cul_type,
 				$user,
 				$target,
-				$this->getLanguage()->timeanddate( wfTimestamp( TS_MW, $row->cul_timestamp ), true ),
-				$this->getLanguage()->date( wfTimestamp( TS_MW, $row->cul_timestamp ), true ),
-				$this->getLanguage()->time( wfTimestamp( TS_MW, $row->cul_timestamp ), true )
+				$lang->userTimeAndDate( wfTimestamp( TS_MW, $row->cul_timestamp ), $contextUser ),
+				$lang->userDate( wfTimestamp( TS_MW, $row->cul_timestamp ), $contextUser ),
+				$lang->userTime( wfTimestamp( TS_MW, $row->cul_timestamp ), $contextUser )
 			)->text() .
 			Linker::commentBlock( $row->cul_reason ) .
 			'</li>';
@@ -72,10 +74,16 @@ class CheckUserLogPager extends ReverseChronologicalPager {
 	}
 
 	public function getQueryInfo() {
+		// Filter out log entries from Special:Investigate
+		$excludeType = $this->mDb->addQuotes( 'investigate' );
 		return [
 			'tables' => [ 'cu_log', 'user' ],
 			'fields' => $this->selectFields(),
-			'conds' => array_merge( $this->searchConds, [ 'user_id = cul_user' ] )
+			'conds' => array_merge(
+				$this->searchConds,
+				[ 'user_id = cul_user' ],
+				[ 'cul_type != ' . $excludeType ]
+			)
 		];
 	}
 

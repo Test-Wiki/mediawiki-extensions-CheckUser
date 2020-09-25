@@ -1,5 +1,8 @@
 <?php
 
+use MediaWiki\MediaWikiServices;
+use Wikimedia\IPUtils;
+
 $IP = getenv( 'MW_INSTALL_PATH' );
 if ( $IP === false ) {
 	$IP = __DIR__ . '/../../..';
@@ -30,7 +33,7 @@ class PopulateCheckUserTable extends LoggedUpdateMaintenance {
 		$db = $this->getDB( DB_MASTER );
 
 		// Check if the table is empty
-		$rcRows = $db->selectField( 'recentchanges', 'COUNT(*)', false, __METHOD__ );
+		$rcRows = $db->selectField( 'recentchanges', 'COUNT(*)', [], __METHOD__ );
 		if ( !$rcRows ) {
 			$this->output( "recentchanges is empty; nothing to add.\n" );
 			return true;
@@ -51,8 +54,8 @@ class PopulateCheckUserTable extends LoggedUpdateMaintenance {
 			$cutoffCond = "";
 		}
 
-		$start = (int)$db->selectField( 'recentchanges', 'MIN(rc_id)', false, __METHOD__ );
-		$end = (int)$db->selectField( 'recentchanges', 'MAX(rc_id)', false, __METHOD__ );
+		$start = (int)$db->selectField( 'recentchanges', 'MIN(rc_id)', [], __METHOD__ );
+		$end = (int)$db->selectField( 'recentchanges', 'MAX(rc_id)', [], __METHOD__ );
 		// Do remaining chunk
 		$end += $this->mBatchSize - 1;
 		$blockStart = $start;
@@ -61,6 +64,8 @@ class PopulateCheckUserTable extends LoggedUpdateMaintenance {
 		$this->output(
 			"Starting poulation of cu_changes with recentchanges rc_id from $start to $end\n"
 		);
+
+		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
 
 		$commentStore = CommentStore::getStore();
 		$rcQuery = RecentChange::getQueryInfo();
@@ -80,7 +85,7 @@ class PopulateCheckUserTable extends LoggedUpdateMaintenance {
 			foreach ( $res as $row ) {
 				$batch[] = [
 					'cuc_timestamp' => $row->rc_timestamp,
-					'cuc_user' => $row->rc_user,
+					'cuc_user' => $row->rc_user ?? 0,
 					'cuc_user_text' => $row->rc_user_text,
 					'cuc_namespace' => $row->rc_namespace,
 					'cuc_title' => $row->rc_title,
@@ -91,7 +96,7 @@ class PopulateCheckUserTable extends LoggedUpdateMaintenance {
 					'cuc_last_oldid' => $row->rc_last_oldid,
 					'cuc_type' => $row->rc_type,
 					'cuc_ip' => $row->rc_ip,
-					'cuc_ip_hex' => IP::toHex( $row->rc_ip ),
+					'cuc_ip_hex' => IPUtils::toHex( $row->rc_ip ),
 				];
 			}
 			if ( count( $batch ) ) {
@@ -99,7 +104,7 @@ class PopulateCheckUserTable extends LoggedUpdateMaintenance {
 			}
 			$blockStart += $this->mBatchSize - 1;
 			$blockEnd += $this->mBatchSize - 1;
-			wfWaitForSlaves( 5 );
+			$lbFactory->waitForReplication( [ 'ifWritesSince' => 5 ] );
 		}
 
 		$this->output( "...cu_changes table has been populated.\n" );

@@ -1,8 +1,10 @@
 <?php
 
+use Wikimedia\IPUtils;
+
 class SpecialCheckUserLog extends SpecialPage {
 	/**
-	 * @var string $target
+	 * @var string
 	 */
 	protected $target;
 
@@ -12,6 +14,7 @@ class SpecialCheckUserLog extends SpecialPage {
 
 	public function execute( $par ) {
 		$this->setHeaders();
+		$this->addHelpLink( 'Extension:CheckUser' );
 		$this->checkPermissions();
 
 		// Blocked users are not allowed to run checkuser queries (bug T157883)
@@ -136,7 +139,7 @@ class SpecialCheckUserLog extends SpecialPage {
 	 * @return array|null array if valid target, null if invalid target given
 	 */
 	protected function getTargetSearchConds() {
-		list( $start, $end ) = IP::parseRange( $this->target );
+		list( $start, $end ) = IPUtils::parseRange( $this->target );
 		$conds = null;
 
 		if ( $start !== false ) {

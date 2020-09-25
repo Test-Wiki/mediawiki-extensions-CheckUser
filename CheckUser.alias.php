@@ -11,8 +11,10 @@ $specialPageAliases = [];
 /** English (English) */
 $specialPageAliases['en'] = [
 	'CheckUser' => [ 'CheckUser' ],
-	'Investigate' => [ 'Investigate' ],
 	'CheckUserLog' => [ 'CheckUserLog' ],
+	'Investigate' => [ 'Investigate' ],
+	'InvestigateBlock' => [ 'InvestigateBlock' ],
+	'InvestigateLog' => [ 'InvestigateLog' ],
 ];
 
 /** Arabic (العربية) */
@@ -182,6 +184,8 @@ $specialPageAliases['gu'] = [
 $specialPageAliases['he'] = [
 	'CheckUser' => [ 'בדיקת_משתמש' ],
 	'CheckUserLog' => [ 'יומן_בדיקת_משתמשים' ],
+	'Investigate' => [ 'חקירה' ],
+	'InvestigateLog' => [ 'יומן_חקירות' ],
 ];
 
 /** Hindi (हिन्दी) */

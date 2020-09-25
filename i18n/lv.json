@@ -4,10 +4,10 @@
 			"Geimeris",
 			"GreenZeb",
 			"Papuass",
+			"Silraks",
 			"Xil",
 			"Yyy",
-			"Zuiks",
-			"Silraks"
+			"Zuiks"
 		]
 	},
 	"checkuser-desc": "Atļauj lietotājiem ar attiecīgām pilnvarām pārbaudīt lietotāja IP adresi un citu informāciju.",
@@ -40,12 +40,16 @@
 	"checkuser-block-failure": "\"' Neviens lietotājs netika bloķēts.\" \"",
 	"checkuser-block-limit": "Izvēlēti pārāk daudzi lietotāji.",
 	"checkuser-block-noreason": "Jums jānorāda bloķēšanas iemesli.",
-	"checkuser-accounts": "$1 {{PLURAL:$1|jauni konti|jauns konts|jauni konti}}",
 	"checkuser-search": "Meklēt",
 	"checkuser-search-submit": "Meklēt",
 	"checkuser-search-initiator": "iniciators",
 	"checkuser-log-search-target": "Mērķis:",
 	"checkuser-log-search-type": "Meklēt pēc:",
 	"checkuser-email-action": "aizsūtīt ziņu uz lietotāja \"$1\" e-pastu",
-	"checkuser-investigate-reason-label": "Iemesls"
+	"checkuser-investigate-tab-compare": "Salīdzināt",
+	"checkuser-investigate-reason-label": "Iemesls",
+	"checkuser-investigate-preliminary-table-header-blocked": "Statuss",
+	"checkuser-investigate-compare-table-cell-edits": "<b>[$1 {{PLURAL:$1|labojumi|labojums|labojumi}}]</b>",
+	"checkuser-investigate-compare-table-header-ip": "IP",
+	"checkuser-investigate-compare-table-header-useragent": "Lietotāja aģents"
 }

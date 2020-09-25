@@ -6,6 +6,7 @@
 			"Arnaugir",
 			"Chaduvari",
 			"El libre",
+			"Fitoschido",
 			"Grondin",
 			"Jordi Roqué",
 			"Juanpabl",
@@ -65,7 +66,6 @@
 	"checkuser-block-limit": "Massa usuaris seleccionats.",
 	"checkuser-block-noreason": "Heu d'indicar un motiu pels blocatges.",
 	"checkuser-noreason": "Heu de donar un motiu per a executar aquesta consulta.",
-	"checkuser-accounts": "$1 {{PLURAL:$1|nou compte|nous comptes}}",
 	"checkuser-too-many": "Hi ha massa resultats (d'acord amb l'estimació de la consulta), cal que useu un CIDR més petit.\nAquí teniu les IP usades (màx. 5000 ordenades per adreça):",
 	"checkuser-user-nonexistent": "L'usuari especificat no existeix.",
 	"checkuser-search": "Cerca les entrades de registre de comprovació d'usuari",
@@ -78,5 +78,7 @@
 	"checkuser-autocreate-action": "fou automàticament creat",
 	"checkuser-create-action": "va ser creat",
 	"checkuser-email-action": "S'ha enviat un missatge de correu electrònic a {{GENDER:$1|l'usuari|la usuària}} $1",
-	"checkuser-reset-action": "reinicia la contrasenya de l'usuari «$1»"
+	"checkuser-reset-action": "reinicia la contrasenya de l'usuari «$1»",
+	"checkuser-investigate-log": "Registres de recerca",
+	"checkuser-investigate-log-empty": "No s’ha trobat cap registre de recerca"
 }

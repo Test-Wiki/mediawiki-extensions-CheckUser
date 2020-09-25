@@ -1,5 +1,11 @@
 <?php
 
+namespace MediaWiki\CheckUser\Tests;
+
+use MediaWikiIntegrationTestCase;
+use ReflectionClass;
+use SpecialCheckUser;
+
 /**
  * Test class for SpecialCheckUser class
  *
@@ -8,7 +14,7 @@
  *
  * @covers SpecialCheckUser
  */
-class SpecialCheckUserTest extends MediaWikiTestCase {
+class SpecialCheckUserTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @var int

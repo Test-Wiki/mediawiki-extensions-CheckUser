@@ -1,18 +1,24 @@
 <?php
 
+namespace MediaWiki\CheckUser\Tests;
+
+use ExtensionRegistry;
+use MediaWiki\CheckUser\PreliminaryCheckService;
+use MediaWiki\User\UserGroupManager;
+use MediaWiki\User\UserGroupManagerFactory;
+use MediaWikiIntegrationTestCase;
+use Wikimedia\Rdbms\FakeResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\ILBFactory;
 use Wikimedia\Rdbms\ILoadBalancer;
-use MediaWiki\CheckUser\PreliminaryCheckService;
 
 /**
  * Test class for PreliminaryCheckService class
  *
  * @group CheckUser
- *
- * @coversDefaultClass \MediaWiki\CheckUser\PreliminaryCheckService
+ * @covers \MediaWiki\CheckUser\PreliminaryCheckService
  */
-class PreliminaryCheckServiceTest extends MediaWikiTestCase {
+class PreliminaryCheckServiceTest extends MediaWikiIntegrationTestCase {
 	/**
 	 * @return MockObject|ILoadBalancer
 	 */
@@ -46,10 +52,9 @@ class PreliminaryCheckServiceTest extends MediaWikiTestCase {
 	}
 
 	/**
-	 * @covers ::getPreliminaryData
-	 * @dataProvider preliminaryDataProvider()
+	 * @dataProvider preprocessResultsProvider()
 	 */
-	public function testGetPreliminaryData( $user, $options, $expected ) {
+	public function testPreprocessResults( $user, $options, $expected ) {
 		$dbRef = $this->getMockDb();
 		$dbRef->method( 'selectRow' )
 			->willReturn(
@@ -66,46 +71,58 @@ class PreliminaryCheckServiceTest extends MediaWikiTestCase {
 		$lbFactory = $this->getMockLoadBalancerFactory();
 		$lbFactory->method( 'getMainLB' )->willReturn( $lb );
 
+		$registry = $this->getMockExtensionRegistry();
+		$registry->method( 'isLoaded' )->willReturn( $options['isCentralAuthAvailable'] );
+
+		$ugm = $this->createNoOpMock( UserGroupManager::class, [ 'getUserGroups' ] );
+		$ugm->method( 'getUserGroups' )->willReturn( $user['groups'] );
+		$ugmf = $this->createNoOpMock( UserGroupManagerFactory::class, [ 'getUserGroupManager' ] );
+		$ugmf->method( 'getUserGroupManager' )->willReturn( $ugm );
+
 		$service = $this->getMockBuilder( PreliminaryCheckService::class )
-			->setConstructorArgs( [ $lbFactory,
-				$this->getMockExtensionRegistry(),
+			->setConstructorArgs( [
+				$lbFactory,
+				$registry,
+				$ugmf,
 				$options['localWikiId']
 			] )
-			->setMethods( [ 'isUserBlocked', 'getUserGroups', 'getGlobalUser' ] )
+			->setMethods( [ 'getCentralAuthDB', 'isUserBlocked', 'getUserGroups' ] )
 			->getMock();
 
 		$service->method( 'isUserBlocked' )
 			->willReturn( $user['blocked'] );
 		$service->method( 'getUserGroups' )
 			->willReturn( $user['groups'] );
-
-		$globalUserMock = $this->getMockBuilder( CentralAuthUser::class )
-			->setMethods( [ 'listAttached', 'exists' ] )
-			->disableOriginalConstructor()
-			->getMock();
-		$globalUserMock->method( 'exists' )
-			->willReturn( isset( $options['attachedWikis'] ) ? true : false );
+		$service->method( 'getCentralAuthDB' )
+			->willReturn( $dbRef );
 
 		if ( $options['isCentralAuthAvailable'] ) {
-			$globalUserMock->expects( $this->once() )
-				->method( 'listAttached' )
-				->willReturn( $options['attachedWikis'] );
+			$rows = new FakeResultWrapper( array_map(
+				function ( $wiki ) use ( $user ) {
+					return (object)[
+						'lu_name' => $user['name'],
+						'lu_wiki' => $wiki,
+					];
+				},
+				$options['attachedWikis']
+			) );
 		} else {
-			$globalUserMock
-				->expects( $this->never() )
-				->method( 'listAttached' );
+			$rows = new FakeResultWrapper( [
+				[
+					'user_id' => $user['id'],
+					'user_name' => $user['name'],
+					'user_registration' => $user['registration'],
+					'user_editcount' => $user['editcount'],
+					'wiki' => $options['localWikiId'],
+				]
+			] );
 		}
 
-		$service->method( 'getGlobalUser' )
-			->willReturn( $globalUserMock );
-
-		$users = [ User::newFromName( $user['name'] ) ];
-		$data = $service->getPreliminaryData( $users );
-
+		$data = $service->preprocessResults( $rows );
 		$this->assertEquals( $expected, $data );
 	}
 
-	public function preliminaryDataProvider() {
+	public function preprocessResultsProvider() {
 		$userData = [
 			'id' => 1,
 			'name' => 'Test User',
@@ -124,11 +141,9 @@ class PreliminaryCheckServiceTest extends MediaWikiTestCase {
 					'localWikiId' => 'testwiki',
 				],
 				[
-					$userData['name'] => [
-						'enwiki'  => $userData,
-						'frwiki'  => $userData,
-						'testwiki'  => $userData,
-					],
+					$userData + [ 'wiki' => 'enwiki' ],
+					$userData + [ 'wiki' => 'frwiki' ],
+					$userData + [ 'wiki' => 'testwiki' ],
 				],
 			],
 			'User with only 1 wiki' => [
@@ -139,9 +154,7 @@ class PreliminaryCheckServiceTest extends MediaWikiTestCase {
 					'localWikiId' => 'testwiki',
 				],
 				[
-					$userData['name'] => [
-						'testwiki'  => $userData,
-					],
+					$userData + [ 'wiki' => 'testwiki' ],
 				],
 			],
 			'CentralAuth not available' => [
@@ -151,8 +164,62 @@ class PreliminaryCheckServiceTest extends MediaWikiTestCase {
 					'localWikiId' => 'somewiki',
 				],
 				[
-					$userData['name'] => [
-						'somewiki'  => $userData,
+					$userData + [ 'wiki' => 'somewiki' ],
+				],
+			],
+		];
+	}
+
+	/**
+	 * @dataProvider getQueryInfoProvider()
+	 */
+	public function testGetQueryInfo( $users, $options, $expected ) {
+		$lbFactory = $this->getMockLoadBalancerFactory();
+		$registry = $this->getMockExtensionRegistry();
+
+		$registry->method( 'isLoaded' )->willReturn( $options['isCentralAuthAvailable'] );
+
+		$service = new PreliminaryCheckService(
+			$lbFactory,
+			$registry,
+			$this->createNoOpMock( UserGroupManagerFactory::class ),
+			'devwiki'
+		);
+		$result = $service->getQueryInfo( $users );
+
+		$this->assertSame(
+			array_replace_recursive( $result, $expected ),
+			$result
+		);
+	}
+
+	public function getQueryInfoProvider() {
+		return [
+			'local users as string' => [
+				[ 'UserA', 'UserB' ],
+				[ 'isCentralAuthAvailable' => false ],
+				[
+					'tables' => 'user',
+					'conds' => [
+						'user_name' => [ 'UserA', 'UserB' ],
+					],
+				],
+			],
+			'empty users' => [
+				[],
+				[ 'isCentralAuthAvailable' => false ],
+				[
+					'tables' => 'user',
+					'conds' => [ 0 ],
+				],
+			],
+			'global users as string' => [
+				[ 'UserA', 'UserB' ],
+				[ 'isCentralAuthAvailable' => true ],
+				[
+					'tables' => 'localuser',
+					'conds' => [
+						'lu_name' => [ 'UserA', 'UserB' ],
 					],
 				],
 			],

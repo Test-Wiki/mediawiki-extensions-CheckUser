@@ -3,8 +3,8 @@
 		"authors": [
 			"Fohanno",
 			"Fulup",
-			"Y-M D",
-			"Huñvreüs"
+			"Huñvreüs",
+			"Y-M D"
 		]
 	},
 	"checkuser-summary": "Furchal a ra an ostilh-mañ ar c'hemmoù diwezhañ a-benn klask ar chomlec'h IP implijet gant un implijer bennak, diskouez a ra holl degasadennoù ur chomlec'h IP (ha pa vefe bet enrollet), pe roll ar c'hontoù implijet gant ur chomlec'h IP. Gallout a ra ar c'hontoù hag ar c'hemmoù bezañ kavet gant un IP XFF mard echu gant \"/xff\". Posupl eo implijout ar protokoloù IPv4 (CIDR $1-32) hag IPv6 (CIDR $2-128). Bevennet eo an niver a gemmoù a c'haller lakaat war wel da {{formatnum:5000}} evit abegoù nerzh ar servijer. Grit gant an ostilh-mañ en ur zoujañ d'ar garta implijout.",
@@ -57,7 +57,6 @@
 	"checkuser-block-limit": "Re a implijerien diuzet.",
 	"checkuser-block-noreason": "Ret eo deoc'h reizhabegiñ ar stankadennoù.",
 	"checkuser-noreason": "Ret eo deoc'h reizhabegiñ an enklask-mañ.",
-	"checkuser-accounts": "$1 {{PLURAL:$1|kont|kont}} nevez",
 	"checkuser-too-many": "Re a zisoc'hoù (hervez istimadur ar reked), strishaat ar CIDR mar plij.\nSetu an IPoù implijet (5000 d'ar muiañ, urzhiet dre ar chomlec'h) :",
 	"checkuser-user-nonexistent": "N'eus ket eus an implijer merket",
 	"checkuser-search": "Klask",
@@ -70,5 +69,10 @@
 	"checkuser-autocreate-action": "zo bet krouet ent emgefre",
 	"checkuser-create-action": "zo bet krouet",
 	"checkuser-email-action": "en deus kaset ur postel d'an implijer « $1 »",
-	"checkuser-reset-action": "adderaouekaat a ra ger-tremen an implijer \"$1\""
+	"checkuser-reset-action": "adderaouekaat a ra ger-tremen an implijer \"$1\"",
+	"checkuser-investigate-indicator-logs": "Marilhoù",
+	"checkuser-investigate-preliminary-table-cell-wiki-nowiki": "N'eo ket bet kavet ar wiki",
+	"checkuser-investigate-compare-notice-no-results": "N'eus disoc'h ebet : an implijerien pe IPoù-se n'o deus graet kemm ebet e-kerzh an 90 deiz diwezhañ.",
+	"checkuser-investigate-compare-notice-no-results-filters": "Disoc'h ebet ne glot gant an dezverkoù silañ-mañ. Dilamit siloù zo evit ledanaat ar c'hlask.",
+	"checkuser-investigate-compare-table-button-add-ip-targets-label": "Diskouez holl implijerien an IP-mañ"
 }

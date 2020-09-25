@@ -3,10 +3,11 @@
 		"authors": [
 			"Dferg",
 			"Esbardu",
-			"MarcoAurelio",
-			"Xuacu",
+			"Fitoschido",
 			"Macofe",
-			"McDutchie"
+			"MarcoAurelio",
+			"McDutchie",
+			"Xuacu"
 		]
 	},
 	"checkuser-summary": "Esta ferramienta escanea los cambios recientes pa sacar les IP usaes por un usuariu o p'amosar los datos d'ediciones/usuarios d'una IP.\nLos usuarios y ediciones correspondientes a una IP puen sacase per aciu de les cabeceres XFF amestando depués de la IP \\\"/xff\\\". Puen usase los protocolos IPv4 (CIDR $1-32) ya IPv6 (CIDR $2-128).\nPor razones de rindimientu nun s'amosarán más de 5.000 ediciones.\nEmplega esta ferramienta acordies cola política d'usu.",
@@ -45,7 +46,7 @@
 	"checkuser-check-this-user": "Comprobar esti usuariu",
 	"checkuser-recent-checks": "Comprobaciones recién pa esti usuariu",
 	"checkuser-log-fail": "Nun se pue añader la entrada nel rexistru",
-	"checkuser-nolog": "Nun s'atopó l'archivu del rexistru.",
+	"checkuser-nolog": "Nun s'atopó'l ficheru del rexistru.",
 	"checkuser-blocked": "Bloquiáu",
 	"checkuser-gblocked": "Bloquiáu globalmente",
 	"checkuser-locked": "Candáu",
@@ -64,7 +65,6 @@
 	"checkuser-block-noreason": "Tienes que dar un motivu pa los bloqueos.",
 	"checkuser-centralauth-multilock": "Candar múltiples cuentes esbillaes",
 	"checkuser-noreason": "Tien de dar un motivu pa esta consulta.",
-	"checkuser-accounts": "$1 {{PLURAL:$1|cuenta nueva|cuentes nueves}}",
 	"checkuser-too-many": "Demasiaos resultaos (acordies colo albidrao pola consulta), intenta menguar el CIDR.\nEstes son les direiciones IP usaes (5000 max, axeitaes por direición):",
 	"checkuser-user-nonexistent": "L'usuariu especificáu nun esiste.",
 	"checkuser-search": "Buscar entraes nel rexistru de check user",
@@ -92,9 +92,6 @@
 	"checkuser-investigate": "Investigar",
 	"checkuser-investigate-legend": "Buscar nomes d'usuariu, direiciones IP o intervalos d'IP",
 	"checkuser-investigate-targets-label": "Nomes d'usuariu y direcciones IP",
-	"checkuser-investigate-targets-placeholder": "Nome d'Usuariu o 1.1.1.42",
-	"checkuser-investigate-ipsearch-help": "El marcar esta opción va facer qu'apaezan toles otres cuentes d'usuariu qu'editaron o ficieron otres aiciones dende les mesmes direiciones IP que los usuarios daos nos 90 díes anteriores.",
-	"checkuser-investigate-ipsearch-label": "Incluir tolos usuarios qu'usen les mesmes direiciones IP que los usuarios daos",
-	"checkuser-investigate-reason-label": "Motivu",
-	"checkuser-investigate-reason-placeholder": "Exemplu: Investigar a UserName por sospeches de «sock puppet»"
+	"checkuser-investigate-targets-placeholder": "Nome d'Usuariu o 1.1.1.1",
+	"checkuser-investigate-reason-label": "Motivu"
 }

@@ -8,10 +8,11 @@
 			"Glavkos",
 			"K sal 15",
 			"Konsnos",
+			"Norhorn",
 			"Omnipaedista",
+			"Protnet",
 			"ZaDiak",
-			"Απεργός",
-			"Protnet"
+			"Απεργός"
 		]
 	},
 	"checkuser-summary": "Αυτό το εργαλείο σαρώνει τις πρόσφατες αλλαγές για να ανακτήσει τις IP διευθύνσεις που χρησιμοποιούνται από ένα χρήστη ή για να δείξει τα δεδομένα επεξεργασιών/χρηστών για μία IP.\nΧρήστες και επεξεργασίες από μία σταθερή IP μπορούν να ανακτηθούν μέσω XFF επικεφαλίδων προσαρτώντας \"/xff\" στην IP. Το IPv4 (CIDR $1-32) και το IPv6 (CIDR $2-128) υποστηρίζονται.\nΌχι περισσότερες από 5000 επεξεργασίες θα επιστραφούν για λόγους απόδοσης.\nΧρησιμοποιήστε αυτό σύμφωνα με την πολιτική.",
@@ -64,7 +65,6 @@
 	"checkuser-block-limit": "Έχουν επιλεχθεί πάρα πολλοί χρήστες.",
 	"checkuser-block-noreason": "Πρέπει να αιτιολογήσετε τις φραγές.",
 	"checkuser-noreason": "Πρέπει να δώσετε μια αιτία για αυτή την ερώτηση.",
-	"checkuser-accounts": "$1 {{PLURAL:$1|νέος λογαριασμός|νέοι λογαριασμοί}}",
 	"checkuser-too-many": "Πάρα πολλά αποτελέσματα (σύμφωνα με την εκτίμηση σειράς), παρακαλούμε στενέψτε το CIDR.\nΠαρακάτω είναι οι διευθύνσεις IP που χρησιμοποιούνται (με ανώτατο όριο τις 5000, ταξινομημένες κατά διεύθυνση):",
 	"checkuser-user-nonexistent": "Ο συγκεκριμένος χρήστης δεν υπάρχει.",
 	"checkuser-search": "Αναζήτηση",
@@ -77,5 +77,13 @@
 	"checkuser-autocreate-action": "δημιουργήθηκε αυτόματα",
 	"checkuser-create-action": "δημιουργήθηκε",
 	"checkuser-email-action": "έστειλε ένα ηλεκτρονικό μήνυμα στον χρήστη \"$1\"",
-	"checkuser-reset-action": "αποστολή νέου κωδικού για τον χρήστη \"$1\""
+	"checkuser-reset-action": "αποστολή νέου κωδικού για τον χρήστη \"$1\"",
+	"checkuser-investigateblock": "Αποκλεισμένοι χρήστες",
+	"checkuser-investigateblock-target": "Ονόματα χρήστη και διευθύνσεις IP",
+	"checkuser-investigateblock-actions": "Ενέργειες για φραγή",
+	"checkuser-investigateblock-reason": "Αιτία",
+	"checkuser-investigateblock-email-label": "Αποτροπή αποστολής μηνύματος ηλεκτρονικού ταχυδρομείου",
+	"checkuser-investigateblock-notice-position-label": "Θέση",
+	"checkuser-investigateblock-notice-text-label": "Κείμενο wiki",
+	"checkuser-investigateblock-notice-replace": "Αντικατάσταση σελίδας"
 }

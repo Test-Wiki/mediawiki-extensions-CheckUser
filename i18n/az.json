@@ -3,10 +3,12 @@
 		"authors": [
 			"Cekli829",
 			"Emperyan",
+			"Neriman2003",
 			"PPerviz",
+			"Toghrul Rahimli",
 			"Vago",
-			"Vugar 1981",
-			"Neriman2003"
+			"Vesely35",
+			"Vugar 1981"
 		]
 	},
 	"checkuser-summary": "Bu alət bir istifadəçi tərəfindən istifadə olunan IP ünvanlarını almaq və ya bir IP ünvan üçün redaktə/istifadəçi məlumatlarını göstərmək üçün son dəyişiklikləri yoxlayır. Bir müştəri IP ünvanı ilə istifadəçilər və redaktələr IP ünvana \"/xff\"  əlavə edərək XFF başlıqları əldə edə bilər. IPv4 (CIDR $1-32) və IPv6 (CIDR $2-128) ilə dəstəklənir. Performans səbəbləri üçün 5,000-dən çox redaktə qaytarılmayacaq. Bunu siyasətə uyğun olaraq istifadə edin.",
@@ -46,7 +48,7 @@
 	"checkuser-recent-checks": "Bu istifadəçi üçün hal-hazırki yoxlamalar",
 	"checkuser-log-fail": "Gündəlik qeydləri əlavə etmək mümkün olmadı.",
 	"checkuser-nolog": "Jurnal faylı tapılmadı.",
-	"checkuser-blocked": "Bloklanmış",
+	"checkuser-blocked": "Bloklanıb",
 	"checkuser-gblocked": "Qlobal bloklanmış",
 	"checkuser-locked": "Bloklanıb",
 	"checkuser-wasblocked": "Daha əvvəl bloklanıb",
@@ -64,7 +66,6 @@
 	"checkuser-block-noreason": "Siz blok üçün səbəb yazmalısınız.",
 	"checkuser-centralauth-multilock": "Multi kilidi seçilmiş hesablar",
 	"checkuser-noreason": "Siz bu sorğu üçün səbəb yazmalısınız.",
-	"checkuser-accounts": "$1 yeni {{PLURAL:$1|hesab|hesab}}",
 	"checkuser-too-many": "Çox nəticə var. (sorğunun qiymətləndirilməsinə görə), CIDR-ni daraltın. Burada istifadə olunan IP ünvanları (5000 max, ünvanı ilə sıralanır):",
 	"checkuser-user-nonexistent": "Göstərilən istifadəçi yoxdur.",
 	"checkuser-search": "İstifadəçi yoxlama girişlərini axtarın",
@@ -90,5 +91,6 @@
 	"checkuser-login-failure": "$1 olaraq {{SITENAME}} saytına daxil olmaq uğursuz oldu",
 	"checkuser-login-success": "$1 olaraq {{SITENAME}} saytına daxil olmaq uğurla alındı",
 	"group-checkuser.css": "/* Burada yerləşən CSS yalnız təftişçilərə şamil olunur */",
-	"group-checkuser.js": "/* Burada yerləşən CSS yalnız təftişçilərə şamil olunur */"
+	"group-checkuser.js": "/* Burada yerləşən CSS yalnız təftişçilərə şamil olunur */",
+	"checkuser-investigateblock-success": "'''{{PLURAL:$2|İstifadəçi|İstifadəçilər}} $1 bloklanıb'''"
 }

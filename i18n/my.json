@@ -1,7 +1,9 @@
 {
 	"@metadata": {
 		"authors": [
-			"Ninjastrikers"
+			"Dr Lotus Black",
+			"Ninjastrikers",
+			"Teitei Para"
 		]
 	},
 	"checkuser": "စုံစမ်းစစ်ဆေးသူ",
@@ -29,5 +31,11 @@
 	"checkuser-check": "စုံစမ်းစစ်ဆေးရန်",
 	"checkuser-check-this-user": "ဤအသုံးပြုသူအား စုံစမ်းစစ်ဆေးရန်",
 	"checkuser-recent-checks": "ဤအသုံးပြုသူအတွက် မကြာသေးမီက စုံစမ်းစစ်ဆေးမှုများ",
-	"checkuser-search-submit": "ရှာဖွေရန်"
+	"checkuser-search-submit": "ရှာဖွေရန်",
+	"checkuser-investigateblock": "အသုံးပြုသူများကို ပိတ်ပင်ရန်",
+	"checkuser-investigateblock-reason": "အကြောင်းပြချက်",
+	"checkuser-investigateblock-email-label": "အီးမေးလ်ပို့ခြင်းကို တားဆီးရန်",
+	"checkuser-investigate-notice-no-results": "ရလဒ်များ မရှိပါ။",
+	"checkuser-investigate-preliminary-table-header-blocked": "အခြေအနေ",
+	"checkuser-investigate-compare-toollinks-geolocate": "ဂျီအိုလိုဂိတ်"
 }

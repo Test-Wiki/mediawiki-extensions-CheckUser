@@ -1,6 +1,10 @@
 <?php
 
 use MediaWiki\Block\DatabaseBlock;
+use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\RevisionRecord;
+use Wikimedia\IPUtils;
+use Wikimedia\Rdbms\FakeResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\IResultWrapper;
 
@@ -39,6 +43,7 @@ class SpecialCheckUser extends SpecialPage {
 	
 	public function execute( $subpage ) {
 		$this->setHeaders();
+		$this->addHelpLink( 'Extension:CheckUser' );
 		$this->checkPermissions();
 		// Logging and blocking requires writing so stop from here if read-only mode
 		$this->checkReadOnly();
@@ -84,16 +89,17 @@ class SpecialCheckUser extends SpecialPage {
 			'reason' => $blockreason,
 			'talk' => $disableUserTalk,
 			'email' => $disableEmail,
+			'reblock' => $request->getBool( 'reblock' )
 		];
 
 		$ip = $name = $xff = '';
 		$m = [];
-		if ( IP::isIPAddress( $user ) ) {
+		if ( IPUtils::isIPAddress( $user ) ) {
 			// A single IP address or an IP range
-			$ip = IP::sanitizeIP( $user );
-		} elseif ( preg_match( '/^(.+)\/xff$/', $user, $m ) && IP::isIPAddress( $m[1] ) ) {
+			$ip = IPUtils::sanitizeIP( $user );
+		} elseif ( preg_match( '/^(.+)\/xff$/', $user, $m ) && IPUtils::isIPAddress( $m[1] ) ) {
 			// A single IP address or range with XFF string included
-			$xff = IP::sanitizeIP( $m[1] );
+			$xff = IPUtils::sanitizeIP( $m[1] );
 		} else {
 			// A user?
 			$name = $user;
@@ -197,18 +203,18 @@ class SpecialCheckUser extends SpecialPage {
 	protected function showForm( $user, $checktype, $ip, $xff, $name, $period ) {
 		$action = htmlspecialchars( $this->getPageTitle()->getLocalURL() );
 		// Fill in requested type if it makes sense
-		$encipusers = $encedits = $encuserips = 0;
+		$encipusers = $encedits = $encuserips = false;
 		if ( $checktype == 'subipusers' && ( $ip || $xff ) ) {
-			$encipusers = 1;
+			$encipusers = true;
 		} elseif ( $checktype == 'subuserips' && $name ) {
-			$encuserips = 1;
+			$encuserips = true;
 		} elseif ( $checktype == 'subedits' ) {
-			$encedits = 1;
+			$encedits = true;
 		// Defaults otherwise
 		} elseif ( $ip || $xff ) {
-			$encedits = 1;
+			$encedits = true;
 		} else {
-			$encuserips = 1;
+			$encuserips = true;
 		}
 
 		$form = Xml::openElement( 'form', [ 'action' => $action,
@@ -265,10 +271,10 @@ class SpecialCheckUser extends SpecialPage {
 			'select',
 			[ 'name' => 'period', 'id' => 'period', 'style' => 'margin-top:.2em;' ]
 		);
-		$s .= Xml::option( $this->msg( 'checkuser-week-1' )->text(), 7, $selected === 7 );
-		$s .= Xml::option( $this->msg( 'checkuser-week-2' )->text(), 14, $selected === 14 );
-		$s .= Xml::option( $this->msg( 'checkuser-month' )->text(), 31, $selected === 31 );
-		$s .= Xml::option( $this->msg( 'checkuser-all' )->text(), 0, $selected === 0 );
+		$s .= Xml::option( $this->msg( 'checkuser-week-1' )->text(), '7', $selected === 7 );
+		$s .= Xml::option( $this->msg( 'checkuser-week-2' )->text(), '14', $selected === 14 );
+		$s .= Xml::option( $this->msg( 'checkuser-month' )->text(), '31', $selected === 31 );
+		$s .= Xml::option( $this->msg( 'checkuser-all' )->text(), '0', $selected === 0 );
 		$s .= Xml::closeElement( 'select' ) . "\n";
 		return $s;
 	}
@@ -329,7 +335,12 @@ class SpecialCheckUser extends SpecialPage {
 			return;
 		}
 
-		$blockedUsers = $this->doMassUserBlockInternal( $users, $blockParams, $tag, $talkTag );
+		$blockedUsers = $this->doMassUserBlockInternal(
+			$users,
+			$blockParams,
+			$tag,
+			$talkTag
+		);
 		$blockedCount = count( $blockedUsers );
 		if ( $blockedCount > 0 ) {
 			$lang = $this->getLanguage();
@@ -351,8 +362,12 @@ class SpecialCheckUser extends SpecialPage {
 	 * @param string $talkTag replaces user talk pages
 	 * @return string[] List of html-safe usernames which were actually were blocked
 	 */
-	protected function doMassUserBlockInternal( $users, array $blockParams,
-		$tag = '', $talkTag = '' ) {
+	protected function doMassUserBlockInternal(
+		$users,
+		array $blockParams,
+		$tag = '',
+		$talkTag = ''
+	) {
 		$currentUser = $this->getUser();
 		$blockAllowsUTEdit = $this->getConfig()->get( 'BlockAllowsUTEdit' );
 		$safeUsers = [];
@@ -363,86 +378,48 @@ class SpecialCheckUser extends SpecialPage {
 				// Invalid user
 				continue;
 			}
-			$isIP = IP::isIPAddress( $u->getName() );
+			$isIP = IPUtils::isIPAddress( $u->getName() );
 			if ( !$u->getId() && !$isIP ) {
 				// Not a registered user or an IP
 				continue;
 			}
 
-			if ( $u->getBlock() ) {
-				// If the user is already blocked, just leave it as is
+			if ( $u->getBlock() && !$blockParams['reblock'] ) {
 				continue;
 			}
 
-			$userTitle = $u->getUserPage();
-			$userTalkTitle = $u->getTalkPage();
-			$safeUsers[] = "[[{$userTitle->getPrefixedText()}|{$userTitle->getText()}]]";
-			$expirestr = $isIP ? '1 week' : 'indefinite';
-			$expiry = SpecialBlock::parseExpiryInput( $expirestr );
+			if (
+				SpecialBlock::canBlockEmail( $this->getUser() ) ||
+				!isset( $blockParams['email' ] ) ||
+				$blockParams['email'] === false
+			) {
+				$res = SpecialBlock::processForm( [
+					'Target' => $u->getName(),
+					'Reason' => [ $blockParams['reason'] ],
+					'Expiry' => $isIP ? '1 week' : 'indefinite',
+					'HardBlock' => !$isIP,
+					'CreateAccount' => true,
+					'AutoBlock' => true,
+					'DisableEmail' => $blockParams['email'] ?? false,
+					'DisableUTEdit' => $blockParams['talk'],
+					'Reblock' => $blockParams['reblock'],
+					'Confirm' => true,
+					'Watch' => false,
+				], $this->getContext() );
 
-			// Create the block
-			$block = new DatabaseBlock();
-			$block->setTarget( $u );
-			$block->setBlocker( $currentUser );
-			$block->setReason( $blockParams['reason'] );
-			$block->setExpiry( $expiry );
-			$block->isHardblock( !$isIP );
-			$block->isAutoblocking( true );
-			$block->isCreateAccountBlocked( true );
-			$block->isEmailBlocked(
-				( SpecialBlock::canBlockEmail( $currentUser ) && $blockParams['email'] )
-			);
-			$block->isUsertalkEditAllowed( $blockAllowsUTEdit ? !$blockParams['talk'] : false );
-			$status = $block->insert();
+				$userPage = $u->getUserPage();
 
-			// Prepare log parameters for the block
-			$logParams = [];
-			$logParams['5::duration'] = $expirestr;
-			$logParams['6::flags'] = self::userBlockLogFlags( $isIP, $blockParams );
+				if ( $res === true ) {
+					$safeUsers[] = "[[{$userPage->getPrefixedText()}|{$userPage->getText()}]]";
+				}
 
-			$logEntry = new ManualLogEntry( 'block', 'block' );
-			$logEntry->setTarget( $userTitle );
-			$logEntry->setComment( $blockParams['reason'] );
-			$logEntry->setPerformer( $currentUser );
-			$logEntry->setParameters( $logParams );
-			$blockIds = array_merge( [ $status['id'] ], $status['autoIds'] );
-			$logEntry->setRelations( [ 'ipb_id' => $blockIds ] );
-			$logEntry->publish( $logEntry->insert() );
-
-			// Tag user page and user talk page
-			$this->tagPage( $userTitle, $tag, $blockParams['reason'] );
-			$this->tagPage( $userTalkTitle, $talkTag, $blockParams['reason'] );
+				// Tag user page and user talk page
+				$this->tagPage( $userPage, $tag, $blockParams['reason'] );
+				$this->tagPage( $u->getTalkPage(), $talkTag, $blockParams['reason'] );
+			}
 		}
 
 		return $safeUsers;
-	}
-
-	/**
-	 * Return a comma-delimited list of "flags" to be passed to the block log.
-	 * Flags are 'anononly', 'nocreate', 'noemail' and 'nousertalk'.
-	 * @param bool $anonOnly
-	 * @param array $blockParams
-	 * @return string
-	 */
-	protected static function userBlockLogFlags( $anonOnly, array $blockParams ) {
-		global $wgBlockAllowsUTEdit;
-		$flags = [];
-
-		if ( $anonOnly ) {
-			$flags[] = 'anononly';
-		}
-
-		$flags[] = 'nocreate';
-
-		if ( $blockParams['email'] ) {
-			$flags[] = 'noemail';
-		}
-
-		if ( $wgBlockAllowsUTEdit && $blockParams['talk'] ) {
-			$flags[] = 'nousertalk';
-		}
-
-		return implode( ',', $flags );
 	}
 
 	/**
@@ -507,10 +484,11 @@ class SpecialCheckUser extends SpecialPage {
 			if ( $lastEdit ) {
 				$lastEditTime = wfTimestamp( TS_MW, $lastEdit );
 				$lang = $this->getLanguage();
+				$contextUser = $this->getUser();
 				// FIXME: don't pass around parsed messages
 				return $this->msg( 'checkuser-nomatch-edits',
-					$lang->date( $lastEditTime, true ),
-					$lang->time( $lastEditTime, true )
+					$lang->userDate( $lastEditTime, $contextUser ),
+					$lang->userTime( $lastEditTime, $contextUser )
 				)->parseAsBlock();
 			}
 		}
@@ -528,7 +506,7 @@ class SpecialCheckUser extends SpecialPage {
 		$out = $this->getOutput();
 
 		$userTitle = Title::newFromText( $user, NS_USER );
-		if ( !is_null( $userTitle ) ) {
+		if ( $userTitle !== null ) {
 			// normalize the username
 			$user = $userTitle->getText();
 		}
@@ -558,28 +536,38 @@ class SpecialCheckUser extends SpecialPage {
 	 *
 	 * @param int $user_id
 	 * @param int $period
-	 * @param int $limit
+	 * @param int|null $limit
 	 * @return IResultWrapper
 	 */
-	protected function doUserIPsDBRequest( $user_id, $period = 0, $limit = 5001 ) : IResultWrapper {
-		$dbr = wfGetDB( DB_REPLICA );
-		$time_conds = $this->getTimeConds( $period );
-		// Ordering by the latest timestamp makes a small filesort on the IP list
+	protected function doUserIPsDBRequest( $user_id, $period = 0, $limit = null ) : IResultWrapper {
+		if ( $limit === null ) {
+			// We add 1 to the row count here because the number of rows returned is used to determine
+			// whether the data has been truncated.
+			$limit = $this->getConfig()->get( 'CheckUserMaximumRowCount' ) + 1;
+		}
 
+		$dbr = wfGetDB( DB_REPLICA );
+		$conds = [ 'cuc_user' => $user_id ];
+		$time_conds = $this->getTimeConds( $period );
+		if ( $time_conds !== false ) {
+			$conds[] = $time_conds;
+		}
+
+		// Ordering by the latest timestamp makes a small filesort on the IP list
 		return $dbr->select(
 			'cu_changes',
 			[
 				'cuc_ip',
 				'cuc_ip_hex',
-				'COUNT(*) AS count',
-				'MIN(cuc_timestamp) AS first',
-				'MAX(cuc_timestamp) AS last',
+				'count' => 'COUNT(*)',
+				'first' => 'MIN(cuc_timestamp)',
+				'last' => 'MAX(cuc_timestamp)',
 			],
-			[ 'cuc_user' => $user_id, $time_conds ],
+			$conds,
 			__METHOD__,
 			[
 				'ORDER BY' => 'last DESC',
-				'GROUP BY' => 'cuc_ip,cuc_ip_hex',
+				'GROUP BY' => [ 'cuc_ip', 'cuc_ip_hex' ],
 				'LIMIT' => $limit,
 				'USE INDEX' => 'cuc_user_ip_time',
 			]
@@ -596,16 +584,26 @@ class SpecialCheckUser extends SpecialPage {
 	 */
 	protected function getCountForIPedits( array $ips_hex, $ip, $period = 0 ) {
 		$dbr = wfGetDB( DB_REPLICA );
+		$conds = [ 'cuc_ip_hex' => $ips_hex[$ip] ];
 		$time_conds = $this->getTimeConds( $period );
+		if ( $time_conds !== false ) {
+			$conds[] = $time_conds;
+		}
 
-		$ipedits = $dbr->estimateRowCount( 'cu_changes', '*',
-			[ 'cuc_ip_hex' => $ips_hex[$ip], $time_conds ],
-			__METHOD__ );
+		$ipedits = $dbr->estimateRowCount(
+			'cu_changes',
+			'*',
+			$conds,
+			__METHOD__
+		);
 		// If small enough, get a more accurate count
 		if ( $ipedits <= 1000 ) {
-			$ipedits = $dbr->selectField( 'cu_changes', 'COUNT(*)',
-				[ 'cuc_ip_hex' => $ips_hex[$ip], $time_conds ],
-				__METHOD__ );
+			$ipedits = $dbr->selectField(
+				'cu_changes',
+				'COUNT(*)',
+				$conds,
+				__METHOD__
+			);
 		}
 
 		return $ipedits;
@@ -613,10 +611,14 @@ class SpecialCheckUser extends SpecialPage {
 
 	/**
 	 * @param IResultWrapper $result
-	 * @param int $limit
-	 * @return array[]
+	 * @param int|null $limit
+	 * @return array
 	 */
-	protected function getIPSets( IResultWrapper $result, $limit = 5000 ) : array {
+	protected function getIPSets( IResultWrapper $result, $limit = null ) : array {
+		if ( $limit === null ) {
+			$limit = $this->getConfig()->get( 'CheckUserMaximumRowCount' );
+		}
+
 		$ipSets = [
 			'edits' => [],
 			'first' => [],
@@ -783,7 +785,7 @@ class SpecialCheckUser extends SpecialPage {
 		// Check how many rows will need sorting ahead of time to see if this is too big.
 		// Also, if we only show 5000, too many will be ignored as well.
 		$rangecount = $this->getIPEditsCount( $ip, $xfor, $index, $period );
-		if ( $rangecount > 5000 ) {
+		if ( $rangecount > $this->getConfig()->get( 'CheckUserMaximumRowCount' ) ) {
 			// See what is best to do after testing the waters...
 			$result = $this->IPEditsTooManyDB( $ip, $xfor, $index, $period );
 			$this->IPEditsTooMany( $result, $ip, $xfor );
@@ -815,20 +817,28 @@ class SpecialCheckUser extends SpecialPage {
 		}
 
 		$dbr = wfGetDB( DB_REPLICA );
-		$ip_conds = $dbr->makeList( self::getIpConds( $dbr, $ip, $xfor ), LIST_AND );
-		$time_conds = $this->getTimeConds( $period );
+		$conds = self::getIpConds( $dbr, $ip, $xfor );
+		if ( $conds === false ) {
+			return -1;
+		}
 		// Quick index check only OK if no time constraint
 		if ( $period ) {
+			$time_conds = $this->getTimeConds( $period );
+			if ( $time_conds !== false ) {
+				$conds[] = $time_conds;
+			}
 			$rangecount = $dbr->selectField(
-				'cu_changes', 'COUNT(*)',
-				[ $ip_conds, $time_conds ],
+				'cu_changes',
+				'COUNT(*)',
+				$conds,
 				__METHOD__,
 				[ 'USE INDEX' => $index ]
 			);
 		} else {
 			$rangecount = $dbr->estimateRowCount(
-				'cu_changes', '*',
-				[ $ip_conds ],
+				'cu_changes',
+				'*',
+				$conds,
 				__METHOD__,
 				[ 'USE INDEX' => $index ]
 			);
@@ -848,25 +858,37 @@ class SpecialCheckUser extends SpecialPage {
 	 * @param bool $xfor if query is for XFF
 	 * @param string $index
 	 * @param int $period
-	 * @param int $limit
+	 * @param int|null $limit
 	 * @return IResultWrapper
 	 */
 	protected function IPEditsTooManyDB(
-		$ip, $xfor, $index, $period = 0, $limit = 5001
+		$ip, $xfor, $index, $period = 0, $limit = null
 	) : IResultWrapper {
+		if ( $limit === null ) {
+			// We add 1 to the row count here because the number of rows returned is used to determine
+			// whether the data has been truncated.
+			$limit = $this->getConfig()->get( 'CheckUserMaximumRowCount' ) + 1;
+		}
+
 		$dbr = wfGetDB( DB_REPLICA );
-		$ip_conds = $dbr->makeList( self::getIpConds( $dbr, $ip, $xfor ), LIST_AND );
+		$conds = self::getIpConds( $dbr, $ip, $xfor );
+		if ( $conds === false ) {
+			return new FakeResultWrapper( [] );
+		}
 		$time_conds = $this->getTimeConds( $period );
+		if ( $time_conds !== false ) {
+			$conds[] = $time_conds;
+		}
 
 		return $dbr->select(
 			'cu_changes',
 			[
 				'cuc_ip_hex',
-				'COUNT(*) AS count',
-				'MIN(cuc_timestamp) AS first',
-				'MAX(cuc_timestamp) AS last'
+				'count' => 'COUNT(*)',
+				'first' => 'MIN(cuc_timestamp)',
+				'last' => 'MAX(cuc_timestamp)',
 			],
-			[ $ip_conds, $time_conds ],
+			$conds,
 			__METHOD__,
 			[
 				'GROUP BY' => 'cuc_ip_hex',
@@ -883,14 +905,18 @@ class SpecialCheckUser extends SpecialPage {
 	 * @param IResultWrapper $result
 	 * @param string $ip
 	 * @param bool $xfor if query is for XFF
-	 * @param int $limit
+	 * @param int|null $limit
 	 */
-	protected function IPEditsTooMany( IResultWrapper $result, $ip, $xfor, $limit = 5000 ) {
+	protected function IPEditsTooMany( IResultWrapper $result, $ip, $xfor, $limit = null ) {
+		if ( $limit === null ) {
+			$limit = $this->getConfig()->get( 'CheckUserMaximumRowCount' );
+		}
+
 		$out = $this->getOutput();
 		$lang = $this->getLanguage();
 
 		// List out each IP that has edits
-		$s = $this->msg( 'checkuser-too-many' )->parseAsBlock();
+		$s = $this->msg( 'checkuser-too-many', $lang->formatNum( $limit ) )->parseAsBlock();
 		$s .= '<ol>';
 
 		$counter = 0;
@@ -902,7 +928,7 @@ class SpecialCheckUser extends SpecialPage {
 			// Convert the IP hexes into normal form
 			if ( strpos( $row->cuc_ip_hex, 'v6-' ) !== false ) {
 				$ip = substr( $row->cuc_ip_hex, 3 );
-				$ip = IP::hexToOctet( $ip );
+				$ip = IPUtils::hexToOctet( $ip );
 			} else {
 				$ip = long2ip( Wikimedia\base_convert( $row->cuc_ip_hex, 16, 10, 8 ) );
 			}
@@ -931,24 +957,36 @@ class SpecialCheckUser extends SpecialPage {
 	 * @param bool $xfor if query is for XFF
 	 * @param string $index
 	 * @param int $period
-	 * @param int $limit
+	 * @param int|null $limit
 	 * @return IResultWrapper
 	 */
 	protected function doIPEditsDBRequest(
-		$ip, $xfor, $index, $period = 0, $limit = 5001
+		$ip, $xfor, $index, $period = 0, $limit = null
 	) : IResultWrapper {
+		if ( $limit === null ) {
+			// We add 1 to the row count here because the number of rows returned is used to determine
+			// whether the data has been truncated.
+			$limit = $this->getConfig()->get( 'CheckUserMaximumRowCount' ) + 1;
+		}
+
 		$dbr = wfGetDB( DB_REPLICA );
-		$ip_conds = $dbr->makeList( self::getIpConds( $dbr, $ip, $xfor ), LIST_AND );
+		$conds = self::getIpConds( $dbr, $ip, $xfor );
+		if ( $conds === false ) {
+			return new FakeResultWrapper( [] );
+		}
 		$time_conds = $this->getTimeConds( $period );
+		if ( $time_conds !== false ) {
+			$conds[] = $time_conds;
+		}
 
 		return $dbr->select(
 			'cu_changes',
 			[
 				'cuc_namespace', 'cuc_title', 'cuc_user', 'cuc_user_text', 'cuc_comment',
 				'cuc_actiontext', 'cuc_timestamp', 'cuc_minor', 'cuc_page_id', 'cuc_type',
-				'cuc_this_oldid', 'cuc_last_oldid', 'cuc_ip', 'cuc_xff', 'cuc_agent'
+				'cuc_this_oldid', 'cuc_last_oldid', 'cuc_ip', 'cuc_xff', 'cuc_agent',
 			],
-			[ $ip_conds, $time_conds ],
+			$conds,
 			__METHOD__,
 			[
 				'ORDER BY' => 'cuc_timestamp DESC',
@@ -992,7 +1030,7 @@ class SpecialCheckUser extends SpecialPage {
 		$s = '<div id="checkuserresults">';
 		$counter = 0;
 		foreach ( $result as $row ) {
-			if ( $counter >= 5000 ) {
+			if ( $counter >= $this->getConfig()->get( 'CheckUserMaximumRowCount' ) ) {
 				$out->addWikiMsg( 'checkuser-limited' );
 				break;
 			}
@@ -1030,7 +1068,7 @@ class SpecialCheckUser extends SpecialPage {
 		$out = $this->getOutput();
 
 		$userTitle = Title::newFromText( $user, NS_USER );
-		if ( !is_null( $userTitle ) ) {
+		if ( $userTitle !== null ) {
 			// normalize the username
 			$user = $userTitle->getText();
 		}
@@ -1053,25 +1091,16 @@ class SpecialCheckUser extends SpecialPage {
 
 		// Cache common messages
 		$this->preCacheMessages();
-		// Ordered in descent by timestamp. Causes large filesorts if there are many edits.
-		// Check how many rows will need sorting ahead of time to see if this is too big.
-		// If it is, sort by IP,time to avoid the filesort.
-		$count = $this->getCountsForUserEdits( $user_id, $period );
-		if ( $count > 5000 ) {
-			// See what is best to do after testing the waters...
-			$out->addHTML( $this->msg( 'checkuser-limited' )->parse() );
-			$result = $this->userEditsRequestLimitExceededDB( $user_id, $period );
-			$this->userEditsRequestLimitExceeded( $result );
-			return;
-		}
+		$limit = $this->getConfig()->get( 'CheckUserMaximumRowCount' );
+
 		// Sorting might take some time...make sure it is there
 		Wikimedia\suppressWarnings();
 		set_time_limit( 60 );
 		Wikimedia\restoreWarnings();
 
 		// OK, do the real query...
-		$result = $this->doUserEditsDBRequest( $user_id, $period );
-		$this->doUserEditsRequestOutput( $result, $user );
+		$result = $this->doUserEditsDBRequest( $user_id, $period, $limit );
+		$this->doUserEditsRequestOutput( $result, $user, $limit );
 	}
 
 	/**
@@ -1083,84 +1112,29 @@ class SpecialCheckUser extends SpecialPage {
 	 */
 	protected function getCountsForUserEdits( $user_id, $period = 0 ) {
 		$dbr = wfGetDB( DB_REPLICA );
-		$user_cond = "cuc_user = " . $dbr->addQuotes( $user_id );
+		$conds = [ 'cuc_user' => $user_id ];
 		$time_conds = $this->getTimeConds( $period );
+		if ( $time_conds !== false ) {
+			$conds[] = $time_conds;
+		}
 
 		if ( $period ) {
 			return $dbr->selectField(
-				'cu_changes', 'COUNT(*)',
-				[ $user_cond, $time_conds ],
+				'cu_changes',
+				'COUNT(*)',
+				$conds,
 				__METHOD__,
 				[ 'USE INDEX' => 'cuc_user_ip_time' ]
 			);
 		} else {
 			return $dbr->estimateRowCount(
-				'cu_changes', '*',
-				[ $user_cond, $time_conds ],
+				'cu_changes',
+				'*',
+				$conds,
 				__METHOD__,
 				[ 'USE INDEX' => 'cuc_user_ip_time' ]
 			);
 		}
-	}
-
-	/**
-	 * Issue a DB query for userEditsRequestLimitExceeded
-	 *
-	 * @param int $user_id
-	 * @param int $period
-	 * @param int $limit
-	 * @return IResultWrapper
-	 */
-	protected function userEditsRequestLimitExceededDB(
-		$user_id, $period = 0, $limit = 5000
-	) : IResultWrapper {
-		$dbr = wfGetDB( DB_REPLICA );
-		$user_cond = "cuc_user = " . $dbr->addQuotes( $user_id );
-		$time_conds = $this->getTimeConds( $period );
-
-		return $dbr->select(
-			'cu_changes',
-			'*',
-			[ $user_cond, $time_conds ],
-			__METHOD__,
-			[
-				'ORDER BY' => 'cuc_ip ASC, cuc_timestamp DESC',
-				'LIMIT' => $limit,
-				'USE INDEX' => 'cuc_user_ip_time'
-			]
-		);
-	}
-
-	/**
-	 * Return "checkuser-limited" error with some hints
-	 *
-	 * @param IResultWrapper $result
-	 * @return void
-	 */
-	protected function userEditsRequestLimitExceeded( IResultWrapper $result ) {
-		$out = $this->getOutput();
-
-		// Try to optimize this query
-		$this->doLinkCache( $result );
-		$s = '';
-		foreach ( $result as $row ) {
-			$ip = htmlspecialchars( $row->cuc_ip );
-			if ( !$ip ) {
-				continue;
-			}
-			if ( !isset( $lastIP ) ) {
-				$lastIP = $row->cuc_ip;
-				$s .= "\n<h2>$ip</h2>\n<div class=\"special\">";
-			} elseif ( $lastIP != $row->cuc_ip ) {
-				$s .= "</ul></div>\n<h2>$ip</h2>\n<div class=\"special\">";
-				$lastIP = $row->cuc_ip;
-				$this->lastdate = null; // start over
-			}
-			$s .= $this->CUChangesLine( $row );
-		}
-		$s .= '</ul></div>';
-
-		$out->addHTML( $s );
 	}
 
 	/**
@@ -1168,18 +1142,28 @@ class SpecialCheckUser extends SpecialPage {
 	 *
 	 * @param int $user_id
 	 * @param int $period
-	 * @param int $limit
+	 * @param int|null $limit
 	 * @return IResultWrapper
 	 */
-	protected function doUserEditsDBRequest( $user_id, $period = 0, $limit = 5000 ) : IResultWrapper {
+	protected function doUserEditsDBRequest( $user_id, $period = 0, $limit = null ) : IResultWrapper {
+		if ( $limit === null ) {
+			$limit = $this->getConfig()->get( 'CheckUserMaximumRowCount' );
+		}
+
 		$dbr = wfGetDB( DB_REPLICA );
-		$user_cond = "cuc_user = " . $dbr->addQuotes( $user_id );
+		$conds = [ 'cuc_user' => $user_id ];
 		$time_conds = $this->getTimeConds( $period );
+		if ( $time_conds !== false ) {
+			$conds[] = $time_conds;
+		}
 
 		return $dbr->select(
-			'cu_changes',
-			'*',
-			[ $user_cond, $time_conds ],
+			'cu_changes', [
+				'cuc_namespace', 'cuc_title', 'cuc_user', 'cuc_user_text', 'cuc_comment',
+				'cuc_actiontext', 'cuc_timestamp', 'cuc_minor', 'cuc_page_id', 'cuc_type',
+				'cuc_this_oldid', 'cuc_last_oldid', 'cuc_ip', 'cuc_xff', 'cuc_agent',
+			],
+			$conds,
 			__METHOD__,
 			[
 				'ORDER BY' => 'cuc_timestamp DESC',
@@ -1194,14 +1178,25 @@ class SpecialCheckUser extends SpecialPage {
 	 *
 	 * @param IResultWrapper $result
 	 * @param string $user
+	 * @param int|null $limit
 	 * @return void
 	 */
-	protected function doUserEditsRequestOutput( IResultWrapper $result, $user ) {
+	protected function doUserEditsRequestOutput( IResultWrapper $result, $user, $limit = null ) {
+		if ( $limit === null ) {
+			$limit = $this->getConfig()->get( 'CheckUserMaximumRowCount' );
+		}
+
 		$out = $this->getOutput();
 
 		if ( !$result->numRows() ) {
 			$out->addHTML( $this->noMatchesMessage( $user ) . "\n" );
 			return;
+		}
+
+		if ( $result->numRows() >= $limit ) {
+			// If the actual row count is at or over the limit, provide a warning
+			// that the results may have been truncated
+			$out->addHTML( $this->msg( 'checkuser-limited' )->parse() );
 		}
 
 		$this->doLinkCache( $result );
@@ -1313,15 +1308,21 @@ class SpecialCheckUser extends SpecialPage {
 		$ip, $xfor, $index, $period = 0, $limit = 10000
 	) : IResultWrapper {
 		$dbr = wfGetDB( DB_REPLICA );
-		$ip_conds = $dbr->makeList( self::getIpConds( $dbr, $ip, $xfor ), LIST_AND );
+		$conds = self::getIpConds( $dbr, $ip, $xfor );
+		if ( $conds === false ) {
+			return new FakeResultWrapper( [] );
+		}
 		$time_conds = $this->getTimeConds( $period );
+		if ( $time_conds !== false ) {
+			$conds[] = $time_conds;
+		}
 
 		return $dbr->select(
 			'cu_changes',
 			[
-				'cuc_user_text', 'cuc_timestamp', 'cuc_user', 'cuc_ip', 'cuc_agent', 'cuc_xff'
+				'cuc_user_text', 'cuc_timestamp', 'cuc_user', 'cuc_ip', 'cuc_agent', 'cuc_xff',
 			],
-			[ $ip_conds, $time_conds ],
+			$conds,
 			__METHOD__,
 			[
 				'ORDER BY' => 'cuc_timestamp DESC',
@@ -1386,7 +1387,6 @@ class SpecialCheckUser extends SpecialPage {
 	protected function doIPUsersRequestOutput(
 		IResultWrapper $result, $ip, $xfor, $tag = '', $talkTag = ''
 	) {
-		global $wgMemc;
 		$out = $this->getOutput();
 
 		if ( !$result->numRows() ) {
@@ -1420,14 +1420,14 @@ class SpecialCheckUser extends SpecialPage {
 			// Load user object
 			$usernfn = User::newFromName( $name, false );
 			// Add user page and tool links
-			if ( !IP::isIPAddress( $usernfn ) ) {
+			if ( !IPUtils::isIPAddress( $usernfn ) ) {
 				$idforlinknfn = -1;
 			} else {
 				$idforlinknfn = $users_ids[$name];
 			}
 			$user = User::newFromId( $users_ids[$name] );
 			$classnouser = false;
-			if ( IP::isIPAddress( $name ) !== IP::isIPAddress( $user ) ) {
+			if ( IPUtils::isIPAddress( $name ) !== IPUtils::isIPAddress( $user ) ) {
 				// User does not exist
 				$idforlink = -1;
 				$classnouser = true;
@@ -1440,7 +1440,7 @@ class SpecialCheckUser extends SpecialPage {
 				$s .= '<span>';
 			}
 			$s .= Linker::userLink( $idforlinknfn, $name, $name ) . '</span> ';
-			$ip = IP::isIPAddress( $name ) ? $name : '';
+			$ip = IPUtils::isIPAddress( $name ) ? $name : '';
 			$s .= Linker::userToolLinksRedContribs(
 				$idforlink,
 				$name,
@@ -1468,7 +1468,7 @@ class SpecialCheckUser extends SpecialPage {
 			// Add global user tools links
 			// Add CentralAuth link for real registered users
 			if ( $centralAuthToollink !== false
-				&& !IP::isIPAddress( $name )
+				&& !IPUtils::isIPAddress( $name )
 				&& !$classnouser
 			) {
 				// Get CentralAuth SpecialPage name in UserLang from the first Alias name
@@ -1494,7 +1494,7 @@ class SpecialCheckUser extends SpecialPage {
 			}
 			// Add Globalblocking link link to CentralWiki
 			if ( $globalBlockingToollink !== false
-				&& IP::isIPAddress( $name )
+				&& IPUtils::isIPAddress( $name )
 			) {
 				// Get GlobalBlock SpecialPage name in UserLang from the first Alias name
 				$centralGBUrl = WikiMap::getForeignURL(
@@ -1558,17 +1558,6 @@ class SpecialCheckUser extends SpecialPage {
 			$s .= ' [<strong>' . htmlspecialchars( $count ) . '</strong>]<br />';
 			// Check if this user or IP is blocked. If so, give a link to the block log...
 			$flags = $this->userBlockFlags( $ip, $users_ids[$name], $user );
-			// Check how many accounts the user made recently
-			if ( $ip ) {
-				$key = $wgMemc->makeKey( 'acctcreate', 'ip', $ip );
-				$count = intval( $wgMemc->get( $key ) );
-				if ( $count ) {
-					// @todo FIXME: i18n issue: Hard coded brackets.
-					$flags[] = '<strong>[' .
-						$this->msg( 'checkuser-accounts' )->numParams( $count )->escaped() .
-						']</strong>';
-				}
-			}
 			$s .= implode( ' ', $flags );
 			$s .= '<ol>';
 			// List out each IP/XFF combo for this username
@@ -1610,6 +1599,7 @@ class SpecialCheckUser extends SpecialPage {
 		}
 		$s .= "</form>\n";
 
+		// @phan-suppress-next-line SecurityCheck-XSS False positive
 		$out->addHTML( $s );
 	}
 
@@ -1672,6 +1662,9 @@ class SpecialCheckUser extends SpecialPage {
 				'<td>' . Xml::label( $this->msg( 'checkuser-blockemail' )->text(), 'blockemail' )
 				. '</td>';
 		}
+		$s .= '<tr><td>' . Xml::check( 'reblock', false, [ 'id' => 'reblock' ] ) . '</td>';
+		$s .= '<td>' . Xml::label( $this->msg( 'checkuser-reblock' )->text(), 'reblock' )
+			. '</td></tr>';
 		$s .= '</tr></table>';
 		$s .= '<p>' . $this->msg( 'checkuser-reason' )->escaped() . '&#160;';
 		$s .= Xml::input( 'blockreason', 46, '', [ 'maxlength' => '150', 'id' => 'blockreason' ] );
@@ -1773,7 +1766,7 @@ class SpecialCheckUser extends SpecialPage {
 		$line = '';
 		// Add date headers as needed
 		$date = htmlspecialchars(
-			$this->getLanguage()->date( wfTimestamp( TS_MW, $row->cuc_timestamp ), true, true )
+			$this->getLanguage()->userDate( wfTimestamp( TS_MW, $row->cuc_timestamp ), $this->getUser() )
 		);
 		if ( $this->lastdate === null ) {
 			$this->lastdate = $date;
@@ -1787,17 +1780,17 @@ class SpecialCheckUser extends SpecialPage {
 		$line .= $this->getLinksFromRow( $row );
 		// Show date
 		$line .= ' . . ' . htmlspecialchars(
-			$this->getLanguage()->time( wfTimestamp( TS_MW, $row->cuc_timestamp ), true, true )
+			$this->getLanguage()->userTime( wfTimestamp( TS_MW, $row->cuc_timestamp ), $this->getUser() )
 			) . ' . . ';
 		// Userlinks
 		$user = User::newFromId( $row->cuc_user );
-		if ( !IP::isIPAddress( $row->cuc_user_text ) ) {
+		if ( !IPUtils::isIPAddress( $row->cuc_user_text ) ) {
 			$idforlinknfn = -1;
 		} else {
 			$idforlinknfn = $row->cuc_user;
 		}
 		$classnouser = false;
-		if ( IP::isIPAddress( $row->cuc_user_text ) !== IP::isIPAddress( $user ) ) {
+		if ( IPUtils::isIPAddress( $row->cuc_user_text ) !== IPUtils::isIPAddress( $user ) ) {
 			// User does not exist
 			$idforlink = -1;
 			$classnouser = true;
@@ -1823,7 +1816,7 @@ class SpecialCheckUser extends SpecialPage {
 			$flags = $flagCache[$row->cuc_user_text];
 		} else {
 			$user = User::newFromName( $row->cuc_user_text, false );
-			$ip = IP::isIPAddress( $row->cuc_user_text ) ? $row->cuc_user_text : '';
+			$ip = IPUtils::isIPAddress( $row->cuc_user_text ) ? $row->cuc_user_text : '';
 			$flags = $this->userBlockFlags( $ip, $row->cuc_user, $user );
 			$flagCache[$row->cuc_user_text] = $flags;
 		}
@@ -1837,11 +1830,15 @@ class SpecialCheckUser extends SpecialPage {
 		}
 		// Comment
 		if ( $row->cuc_type == RC_EDIT || $row->cuc_type == RC_NEW ) {
-			$rev = Revision::newFromId( $row->cuc_this_oldid );
-			if ( !$rev ) {
+			$revRecord = MediaWikiServices::getInstance()
+				->getRevisionLookup()
+				->getRevisionById( $row->cuc_this_oldid );
+			if ( !$revRecord ) {
 				// Assume revision is deleted
 				$dbr = wfGetDB( DB_REPLICA );
-				$queryInfo = Revision::getArchiveQueryInfo();
+				$queryInfo = MediaWikiServices::getInstance()
+					->getRevisionStore()
+					->getArchiveQueryInfo();
 				$tmp = $dbr->selectRow(
 					$queryInfo['tables'],
 					$queryInfo['fields'],
@@ -1851,10 +1848,12 @@ class SpecialCheckUser extends SpecialPage {
 					$queryInfo['joins']
 				);
 				if ( $tmp ) {
-					$rev = Revision::newFromArchiveRow( $tmp );
+					$revRecord = MediaWikiServices::getInstance()
+						->getRevisionFactory()
+						->newRevisionFromArchiveRow( $tmp );
 				}
 
-				if ( !$rev ) {
+				if ( !$revRecord ) {
 					// This shouldn't happen, CheckUser points to a revision
 					// that isn't in revision nor archive table?
 					throw new Exception(
@@ -1862,7 +1861,11 @@ class SpecialCheckUser extends SpecialPage {
 					);
 				}
 			}
-			if ( $rev->userCan( Revision::DELETED_COMMENT ) ) {
+			if ( RevisionRecord::userCanBitfield(
+				$revRecord->getVisibility(),
+				RevisionRecord::DELETED_COMMENT,
+				$this->getUser()
+			) ) {
 				$line .= Linker::commentBlock( $row->cuc_comment );
 			} else {
 				$line .= Linker::commentBlock(
@@ -1926,7 +1929,7 @@ class SpecialCheckUser extends SpecialPage {
 			$s .= ' -- ';
 			$s .= $this->getFormattedTimestamp( $last );
 		}
-		return $this->msg( 'parentheses' )->rawParams( $s )->escaped();
+		return $this->msg( 'parentheses' )->params( $s )->escaped();
 	}
 
 	/**
@@ -1937,8 +1940,8 @@ class SpecialCheckUser extends SpecialPage {
 	 * @return string
 	 */
 	protected function getFormattedTimestamp( $timestamp ) {
-		return $this->getLanguage()->timeanddate(
-			wfTimestamp( TS_MW, $timestamp ), true
+		return $this->getLanguage()->userTimeAndDate(
+			wfTimestamp( TS_MW, $timestamp ), $this->getUser()
 		);
 	}
 
@@ -2024,7 +2027,8 @@ class SpecialCheckUser extends SpecialPage {
 				'log_title' => $userpage->getDBkey()
 			],
 			__METHOD__,
-			[ 'USE INDEX' => 'page_time' ] );
+			[ 'USE INDEX' => 'page_time' ]
+		);
 	}
 
 	/**
@@ -2050,16 +2054,16 @@ class SpecialCheckUser extends SpecialPage {
 	 */
 	public static function isValidRange( $target ) {
 		$CIDRLimit = \RequestContext::getMain()->getConfig()->get( 'CheckUserCIDRLimit' );
-		if ( IP::isValidRange( $target ) ) {
+		if ( IPUtils::isValidRange( $target ) ) {
 			list( $ip, $range ) = explode( '/', $target, 2 );
-			if ( ( IP::isIPv4( $ip ) && $range < $CIDRLimit['IPv4'] ) ||
-				( IP::isIPv6( $ip ) && $range < $CIDRLimit['IPv6'] ) ) {
+			if ( ( IPUtils::isIPv4( $ip ) && $range < $CIDRLimit['IPv4'] ) ||
+				( IPUtils::isIPv6( $ip ) && $range < $CIDRLimit['IPv6'] ) ) {
 					return false; // range is too wide
 			}
 			return true;
 		}
 
-		return IP::isValid( $target );
+		return IPUtils::isValid( $target );
 	}
 
 	/**
@@ -2075,19 +2079,19 @@ class SpecialCheckUser extends SpecialPage {
 			return false;
 		}
 
-		if ( IP::isValidRange( $target ) ) {
-			list( $start, $end ) = IP::parseRange( $target );
+		if ( IPUtils::isValidRange( $target ) ) {
+			list( $start, $end ) = IPUtils::parseRange( $target );
 			return [ 'cuc_' . $type . '_hex BETWEEN ' . $db->addQuotes( $start ) .
 				' AND ' . $db->addQuotes( $end ) ];
-		} elseif ( IP::isValid( $target ) ) {
-				return [ "cuc_{$type}_hex" => IP::toHex( $target ) ];
+		} elseif ( IPUtils::isValid( $target ) ) {
+				return [ "cuc_{$type}_hex" => IPUtils::toHex( $target ) ];
 		}
 		return false; // invalid IP
 	}
 
 	protected function getTimeConds( $period ) {
 		if ( !$period ) {
-			return '1 = 1';
+			return false;
 		}
 		$dbr = wfGetDB( DB_REPLICA );
 		$cutoff_unixtime = time() - ( $period * 24 * 3600 );
@@ -2100,7 +2104,7 @@ class SpecialCheckUser extends SpecialPage {
 		$user = RequestContext::getMain()->getUser();
 
 		if ( $targetType == 'ip' ) {
-			list( $rangeStart, $rangeEnd ) = IP::parseRange( $target );
+			list( $rangeStart, $rangeEnd ) = IPUtils::parseRange( $target );
 			$targetHex = $rangeStart;
 			if ( $rangeStart == $rangeEnd ) {
 				$rangeStart = $rangeEnd = '';

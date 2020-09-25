@@ -1,11 +1,22 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
 use MediaWiki\Auth\AuthenticationResponse;
 use MediaWiki\Block\DatabaseBlock;
+use MediaWiki\CheckUser\SpecialInvestigate;
+use MediaWiki\CheckUser\SpecialInvestigateBlock;
+use MediaWiki\CheckUser\SpecialInvestigateLog;
+use MediaWiki\MediaWikiServices;
+use Wikimedia\IPUtils;
 use Wikimedia\Rdbms\IDatabase;
 
 class CheckUserHooks {
+
+	/**
+	 * The maximum number of bytes that fit in CheckUser's text fields
+	 * (cuc_agent,cuc_actiontext,cuc_comment,cuc_xff)
+	 */
+	private const TEXT_FIELD_LENGTH = 255;
+
 	/**
 	 * @param array &$list
 	 * @return bool
@@ -14,7 +25,34 @@ class CheckUserHooks {
 		global $wgCheckUserEnableSpecialInvestigate;
 
 		if ( $wgCheckUserEnableSpecialInvestigate ) {
-			$list['Investigate'] = SpecialInvestigate::class;
+			$list['Investigate'] = [
+				'class' => SpecialInvestigate::class,
+				'services' => [
+					'CheckUserPreliminaryCheckPagerFactory',
+					'CheckUserComparePagerFactory',
+					'CheckUserTimelinePagerFactory',
+					'CheckUserTokenQueryManager',
+					'CheckUserDurationManager',
+					'CheckUserEventLogger',
+				],
+			];
+
+			$list['InvestigateLog'] = [
+				'class' => SpecialInvestigateLog::class,
+				'services' => [
+					'CheckUserInvestigateLogPagerFactory',
+				],
+			];
+
+			$list['InvestigateBlock'] = [
+				'class' => SpecialInvestigateBlock::class,
+				'services' => [
+					'PermissionManager',
+					'TitleFormatter',
+					'UserFactory',
+					'CheckUserEventLogger',
+				]
+			];
 		}
 
 		return true;
@@ -29,14 +67,14 @@ class CheckUserHooks {
 	 * @return bool
 	 */
 	public static function updateCheckUserData( RecentChange $rc ) {
-		global $wgRequest;
+		global $wgRequest, $wgCheckUserLogAdditionalRights;
 
 		/**
 		 * RC_CATEGORIZE recent changes are generally triggered by other edits.
 		 * Thus there is no reason to store checkuser data about them.
 		 * @see https://phabricator.wikimedia.org/T125209
 		 */
-		if ( defined( 'RC_CATEGORIZE' ) && $rc->getAttribute( 'rc_type' ) == RC_CATEGORIZE ) {
+		if ( $rc->getAttribute( 'rc_type' ) == RC_CATEGORIZE ) {
 			return true;
 		}
 		/**
@@ -44,7 +82,7 @@ class CheckUserHooks {
 		 * Thus there is no reason to store checkuser data about them.
 		 * @see https://phabricator.wikimedia.org/T125664
 		 */
-		if ( defined( 'RC_EXTERNAL' ) && $rc->getAttribute( 'rc_type' ) == RC_EXTERNAL ) {
+		if ( $rc->getAttribute( 'rc_type' ) == RC_EXTERNAL ) {
 			return true;
 		}
 
@@ -61,17 +99,33 @@ class CheckUserHooks {
 		// BC: check if log_type and log_action exists
 		// If not, then $rc_comment is the actiontext and comment
 		if ( isset( $attribs['rc_log_type'] ) && $attribs['rc_type'] == RC_LOG ) {
+			$pm = MediaWikiServices::getInstance()->getPermissionManager();
 			$target = Title::makeTitle( $attribs['rc_namespace'], $attribs['rc_title'] );
 			$context = RequestContext::newExtraneousContext( $target );
+
+			$scope = $pm->addTemporaryUserRights( $context->getUser(), $wgCheckUserLogAdditionalRights );
 
 			$formatter = LogFormatter::newFromRow( $rc->getAttributes() );
 			$formatter->setContext( $context );
 			$actionText = $formatter->getPlainActionText();
+
+			\Wikimedia\ScopedCallback::consume( $scope );
 		} else {
 			$actionText = '';
 		}
 
-		$dbw = wfGetDB( DB_MASTER );
+		$comment = $rc->getAttribute( 'rc_comment' );
+
+		$services = MediaWikiServices::getInstance();
+		$contLang = $services->getContentLanguage();
+
+		// (T199323) Truncate text fields prior to database insertion
+		// Attempting to insert too long text will cause an error in MariaDB/MySQL strict mode
+		$actionText = $contLang->truncateForDatabase( $actionText, self::TEXT_FIELD_LENGTH );
+		$agent = $contLang->truncateForDatabase( $agent, self::TEXT_FIELD_LENGTH );
+		$xff = $contLang->truncateForDatabase( $xff, self::TEXT_FIELD_LENGTH );
+		$comment = $contLang->truncateForDatabase( $comment, self::TEXT_FIELD_LENGTH );
+
 		$rcRow = [
 			'cuc_namespace'  => $attribs['rc_namespace'],
 			'cuc_title'      => $attribs['rc_title'],
@@ -79,15 +133,15 @@ class CheckUserHooks {
 			'cuc_user'       => $attribs['rc_user'],
 			'cuc_user_text'  => $attribs['rc_user_text'],
 			'cuc_actiontext' => $actionText,
-			'cuc_comment'    => $rc->getAttribute( 'rc_comment' ),
+			'cuc_comment'    => $comment,
 			'cuc_this_oldid' => $attribs['rc_this_oldid'],
 			'cuc_last_oldid' => $attribs['rc_last_oldid'],
 			'cuc_type'       => $attribs['rc_type'],
 			'cuc_timestamp'  => $attribs['rc_timestamp'],
-			'cuc_ip'         => IP::sanitizeIP( $ip ),
-			'cuc_ip_hex'     => $ip ? IP::toHex( $ip ) : null,
+			'cuc_ip'         => IPUtils::sanitizeIP( $ip ),
+			'cuc_ip_hex'     => $ip ? IPUtils::toHex( $ip ) : null,
 			'cuc_xff'        => !$isSquidOnly ? $xff : '',
-			'cuc_xff_hex'    => ( $xff_ip && !$isSquidOnly ) ? IP::toHex( $xff_ip ) : null,
+			'cuc_xff_hex'    => ( $xff_ip && !$isSquidOnly ) ? IPUtils::toHex( $xff_ip ) : null,
 			'cuc_agent'      => $agent
 		];
 		# On PG, MW unsets cur_id due to schema incompatibilites. So it may not be set!
@@ -96,6 +150,8 @@ class CheckUserHooks {
 		}
 
 		Hooks::run( 'CheckUserInsertForRecentChange', [ $rc, &$rcRow ] );
+
+		$dbw = $services->getDBLoadBalancer()->getConnectionRef( DB_MASTER );
 		$dbw->insert( 'cu_changes', $rcRow, __METHOD__ );
 
 		return true;
@@ -118,24 +174,36 @@ class CheckUserHooks {
 		list( $xff_ip, $isSquidOnly ) = self::getClientIPfromXFF( $xff );
 		// Get agent
 		$agent = $wgRequest->getHeader( 'User-Agent' );
-		$dbw = wfGetDB( DB_MASTER );
+
+		$actionText = wfMessage( 'checkuser-reset-action', $account->getName() )
+			->inContentLanguage()->text();
+
+		$services = MediaWikiServices::getInstance();
+		$contLang = $services->getContentLanguage();
+
+		// (T199323) Truncate comment fields prior to database insertion
+		// Attempting to insert too long text will cause an error in MariaDB/MySQL strict mode
+		$actionText = $contLang->truncateForDatabase( $actionText, self::TEXT_FIELD_LENGTH );
+		$agent = $contLang->truncateForDatabase( $agent, self::TEXT_FIELD_LENGTH );
+		$xff = $contLang->truncateForDatabase( $xff, self::TEXT_FIELD_LENGTH );
+
+		$dbw = $services->getDBLoadBalancer()->getConnectionRef( DB_MASTER );
 		$rcRow = [
 			'cuc_namespace'  => NS_USER,
 			'cuc_title'      => '',
 			'cuc_minor'      => 0,
 			'cuc_user'       => $user->getId(),
 			'cuc_user_text'  => $user->getName(),
-			'cuc_actiontext' => wfMessage( 'checkuser-reset-action', $account->getName() )
-				->inContentLanguage()->text(),
+			'cuc_actiontext' => $actionText,
 			'cuc_comment'    => '',
 			'cuc_this_oldid' => 0,
 			'cuc_last_oldid' => 0,
 			'cuc_type'       => RC_LOG,
 			'cuc_timestamp'  => $dbw->timestamp( wfTimestampNow() ),
-			'cuc_ip'         => IP::sanitizeIP( $ip ),
-			'cuc_ip_hex'     => $ip ? IP::toHex( $ip ) : null,
+			'cuc_ip'         => IPUtils::sanitizeIP( $ip ),
+			'cuc_ip_hex'     => $ip ? IPUtils::toHex( $ip ) : null,
 			'cuc_xff'        => !$isSquidOnly ? $xff : '',
-			'cuc_xff_hex'    => ( $xff_ip && !$isSquidOnly ) ? IP::toHex( $xff_ip ) : null,
+			'cuc_xff_hex'    => ( $xff_ip && !$isSquidOnly ) ? IPUtils::toHex( $xff_ip ) : null,
 			'cuc_agent'      => $agent
 		];
 		$dbw->insert( 'cu_changes', $rcRow, __METHOD__ );
@@ -176,24 +244,36 @@ class CheckUserHooks {
 		// Get agent
 		$agent = $wgRequest->getHeader( 'User-Agent' );
 
-		$dbr = wfGetDB( DB_REPLICA );
+		$actionText = wfMessage( 'checkuser-email-action', $hash )->inContentLanguage()->text();
+
+		$services = MediaWikiServices::getInstance();
+		$contLang = $services->getContentLanguage();
+
+		// (T199323) Truncate text fields prior to database insertion
+		// Attempting to insert too long text will cause an error in MariaDB/MySQL strict mode
+		$actionText = $contLang->truncateForDatabase( $actionText, self::TEXT_FIELD_LENGTH );
+		$agent = $contLang->truncateForDatabase( $agent, self::TEXT_FIELD_LENGTH );
+		$xff = $contLang->truncateForDatabase( $xff, self::TEXT_FIELD_LENGTH );
+
+		$lb = $services->getDBLoadBalancer();
+		$dbr = $lb->getConnectionRef( DB_REPLICA );
+
 		$rcRow = [
 			'cuc_namespace'  => NS_USER,
 			'cuc_title'      => '',
 			'cuc_minor'      => 0,
 			'cuc_user'       => $userFrom->getId(),
 			'cuc_user_text'  => $userFrom->getName(),
-			'cuc_actiontext' =>
-				wfMessage( 'checkuser-email-action', $hash )->inContentLanguage()->text(),
+			'cuc_actiontext' => $actionText,
 			'cuc_comment'    => '',
 			'cuc_this_oldid' => 0,
 			'cuc_last_oldid' => 0,
 			'cuc_type'       => RC_LOG,
 			'cuc_timestamp'  => $dbr->timestamp( wfTimestampNow() ),
-			'cuc_ip'         => IP::sanitizeIP( $ip ),
-			'cuc_ip_hex'     => $ip ? IP::toHex( $ip ) : null,
+			'cuc_ip'         => IPUtils::sanitizeIP( $ip ),
+			'cuc_ip_hex'     => $ip ? IPUtils::toHex( $ip ) : null,
 			'cuc_xff'        => !$isSquidOnly ? $xff : '',
-			'cuc_xff_hex'    => ( $xff_ip && !$isSquidOnly ) ? IP::toHex( $xff_ip ) : null,
+			'cuc_xff_hex'    => ( $xff_ip && !$isSquidOnly ) ? IPUtils::toHex( $xff_ip ) : null,
 			'cuc_agent'      => $agent
 		];
 		if ( trim( $wgCUPublicKey ) != '' ) {
@@ -203,8 +283,8 @@ class CheckUserHooks {
 		}
 
 		$fname = __METHOD__;
-		DeferredUpdates::addCallableUpdate( function () use ( $rcRow, $fname ) {
-			$dbw = wfGetDB( DB_MASTER );
+		DeferredUpdates::addCallableUpdate( function () use ( $lb, $rcRow, $fname ) {
+			$dbw = $lb->getConnectionRef( DB_MASTER );
 			$dbw->insert( 'cu_changes', $rcRow, $fname );
 		} );
 
@@ -241,7 +321,19 @@ class CheckUserHooks {
 		list( $xff_ip, $isSquidOnly ) = self::getClientIPfromXFF( $xff );
 		// Get agent
 		$agent = $wgRequest->getHeader( 'User-Agent' );
-		$dbw = wfGetDB( DB_MASTER );
+		$services = MediaWikiServices::getInstance();
+		$contLang = $services->getContentLanguage();
+
+		$actiontext = wfMessage( $actiontext )->inContentLanguage()->text();
+
+		// (T199323) Truncate text fields prior to database insertion
+		// Attempting to insert too long text will cause an error in MariaDB/MySQL strict mode
+		$actionText = $contLang->truncateForDatabase( $actiontext, self::TEXT_FIELD_LENGTH );
+		$agent = $contLang->truncateForDatabase( $agent, self::TEXT_FIELD_LENGTH );
+		$xff = $contLang->truncateForDatabase( $xff, self::TEXT_FIELD_LENGTH );
+
+		$dbw = $services->getDBLoadBalancer()->getConnectionRef( DB_MASTER );
+
 		$rcRow = [
 			'cuc_page_id'    => 0,
 			'cuc_namespace'  => NS_USER,
@@ -249,16 +341,16 @@ class CheckUserHooks {
 			'cuc_minor'      => 0,
 			'cuc_user'       => $user->getId(),
 			'cuc_user_text'  => $user->getName(),
-			'cuc_actiontext' => wfMessage( $actiontext )->inContentLanguage()->text(),
+			'cuc_actiontext' => $actionText,
 			'cuc_comment'    => '',
 			'cuc_this_oldid' => 0,
 			'cuc_last_oldid' => 0,
 			'cuc_type'       => RC_LOG,
 			'cuc_timestamp'  => $dbw->timestamp( wfTimestampNow() ),
-			'cuc_ip'         => IP::sanitizeIP( $ip ),
-			'cuc_ip_hex'     => $ip ? IP::toHex( $ip ) : null,
+			'cuc_ip'         => IPUtils::sanitizeIP( $ip ),
+			'cuc_ip_hex'     => $ip ? IPUtils::toHex( $ip ) : null,
 			'cuc_xff'        => !$isSquidOnly ? $xff : '',
-			'cuc_xff_hex'    => ( $xff_ip && !$isSquidOnly ) ? IP::toHex( $xff_ip ) : null,
+			'cuc_xff_hex'    => ( $xff_ip && !$isSquidOnly ) ? IPUtils::toHex( $xff_ip ) : null,
 			'cuc_agent'      => $agent
 		];
 		$dbw->insert( 'cu_changes', $rcRow, __METHOD__ );
@@ -288,42 +380,55 @@ class CheckUserHooks {
 			return;
 		}
 
-		if ( $ret->status === AuthenticationResponse::FAIL ) {
-			$msg = 'checkuser-login-failure';
-		} elseif ( $ret->status === AuthenticationResponse::PASS ) {
-			$msg = 'checkuser-login-success';
-		} else {
-			// Abstain, Redirect, etc.
-			return;
-		}
-
 		$ip = $wgRequest->getIP();
 		$xff = $wgRequest->getHeader( 'X-Forwarded-For' );
 		list( $xff_ip, $isSquidOnly ) = self::getClientIPfromXFF( $xff );
 		$agent = $wgRequest->getHeader( 'User-Agent' );
 		$userName = $user->getName();
-		$target = "[[User:$userName|$userName]]";
-		$msg = wfMessage( $msg );
-		$msg->params( $target );
 
-		$dbw = wfGetDB( DB_MASTER );
+		if ( $ret->status === AuthenticationResponse::FAIL ) {
+			$msg = 'checkuser-login-failure';
+			$cuc_user = 0;
+			$cuc_user_text = $ip;
+		} elseif ( $ret->status === AuthenticationResponse::PASS ) {
+			$msg = 'checkuser-login-success';
+			$cuc_user = $user->getId();
+			$cuc_user_text = $userName;
+		} else {
+			// Abstain, Redirect, etc.
+			return;
+		}
+
+		$target = "[[User:$userName|$userName]]";
+		$actionText = wfMessage( $msg )->params( $target )->inContentLanguage()->text();
+
+		$services = MediaWikiServices::getInstance();
+		$contLang = $services->getContentLanguage();
+
+		// (T199323) Truncate text fields prior to database insertion
+		// Attempting to insert too long text will cause an error in MariaDB/MySQL strict mode
+		$actionText = $contLang->truncateForDatabase( $actionText, self::TEXT_FIELD_LENGTH );
+		$agent = $contLang->truncateForDatabase( $agent, self::TEXT_FIELD_LENGTH );
+		$xff = $contLang->truncateForDatabase( $xff, self::TEXT_FIELD_LENGTH );
+
+		$dbw = $services->getDBLoadBalancer()->getConnectionRef( DB_MASTER );
 		$rcRow = [
 			'cuc_page_id'    => 0,
 			'cuc_namespace'  => NS_USER,
 			'cuc_title'      => '',
 			'cuc_minor'      => 0,
-			'cuc_user'       => 0,
-			'cuc_user_text'  => $ip,
-			'cuc_actiontext' => $msg->inContentLanguage()->text(),
+			'cuc_user'       => $cuc_user,
+			'cuc_user_text'  => $cuc_user_text,
+			'cuc_actiontext' => $actionText,
 			'cuc_comment'    => '',
 			'cuc_this_oldid' => 0,
 			'cuc_last_oldid' => 0,
 			'cuc_type'       => RC_LOG,
 			'cuc_timestamp'  => $dbw->timestamp( wfTimestampNow() ),
-			'cuc_ip'         => IP::sanitizeIP( $ip ),
-			'cuc_ip_hex'     => $ip ? IP::toHex( $ip ) : null,
+			'cuc_ip'         => IPUtils::sanitizeIP( $ip ),
+			'cuc_ip_hex'     => $ip ? IPUtils::toHex( $ip ) : null,
 			'cuc_xff'        => !$isSquidOnly ? $xff : '',
-			'cuc_xff_hex'    => ( $xff_ip && !$isSquidOnly ) ? IP::toHex( $xff_ip ) : null,
+			'cuc_xff_hex'    => ( $xff_ip && !$isSquidOnly ) ? IPUtils::toHex( $xff_ip ) : null,
 			'cuc_agent'      => $agent
 		];
 		$dbw->insert( 'cu_changes', $rcRow, __METHOD__ );
@@ -397,7 +502,7 @@ class CheckUserHooks {
 		# unless the address is not sensible (e.g. private). However, prefer private
 		# IP addresses over proxy servers controlled by this site (more sensible).
 		foreach ( $ipchain as $i => $curIP ) {
-			$curIP = IP::canonicalize( $curIP );
+			$curIP = IPUtils::canonicalize( $curIP );
 			if ( $curIP === null ) {
 				break; // not a valid IP address
 			}
@@ -408,14 +513,14 @@ class CheckUserHooks {
 			}
 			if (
 				isset( $ipchain[$i + 1] ) &&
-				IP::isIPAddress( $ipchain[$i + 1] ) &&
+				IPUtils::isIPAddress( $ipchain[$i + 1] ) &&
 				(
-					IP::isPublic( $ipchain[$i + 1] ) ||
+					IPUtils::isPublic( $ipchain[$i + 1] ) ||
 					$wgUsePrivateIPs ||
 					$curIsSquid // bug 48919
 				)
 			) {
-				$client = IP::canonicalize( $ipchain[$i + 1] );
+				$client = IPUtils::canonicalize( $ipchain[$i + 1] );
 				$isSquidOnly = ( $isSquidOnly && $curIsSquid );
 				continue;
 			}
@@ -589,5 +694,18 @@ class CheckUserHooks {
 		$renameUserSQL->tables['cu_log'] = [ 'cul_user_text', 'cul_user' ];
 
 		return true;
+	}
+
+	/**
+	 * Register rights
+	 *
+	 * @param array &$rights
+	 */
+	public static function onUserGetAllRights( array &$rights ) {
+		global $wgCheckUserEnableSpecialInvestigate;
+
+		if ( $wgCheckUserEnableSpecialInvestigate ) {
+			$rights[] = 'investigate';
+		}
 	}
 }

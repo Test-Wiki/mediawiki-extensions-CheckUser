@@ -1,13 +1,14 @@
 {
 	"@metadata": {
 		"authors": [
+			"1917 Ekim Devrimi",
 			"Erdemaslancan",
 			"Gorizon",
-			"Mirzali",
-			"Xoser",
-			"Marmase",
 			"Kumkumuk",
-			"1917 Ekim Devrimi"
+			"Marmase",
+			"Mirzali",
+			"Orbot707",
+			"Xoser"
 		]
 	},
 	"checkuser-summary": "Eno xacet vurnayışanê neweyan sken keno ke adresanê IPyan reyna biaro ke bımocno ra yew adresa IPya melumatê karberi ser.\nKarberan u vurnayışan ke yew IPyê karberi kerd a reyna yeno pê XFF u \"/xff\". IPv4 (CIDR $1-32) u IPv6 (CIDR $2-128) rê zi desteg beno.\n5000 zafêr vurnayışan sero netice nêdano, qet performans hêdi beno.\nEna politika ma sero kar bıke.",
@@ -20,13 +21,13 @@
 	"group-checkuser": "Weynayoği",
 	"group-checkuser-member": "{{GENDER:$1|Kontrolkar}}",
 	"right-checkuser": "Adresanê IPyê karberi û melumatê bini kontrol ke",
-	"right-checkuser-log": "Qeydé rocekané karber cernayışi bıvin",
+	"right-checkuser-log": "Roceka Tetqiqwani bıvênên",
 	"action-checkuser": "adresanê IPyê karberi û melumatê bini kontrol ke",
 	"action-checkuser-log": "Rocekane Karber kontroli bıvin",
 	"grouppage-checkuser": "{{ns:project}}:Teftişwan",
 	"checkuser-reason": "Sebeb:",
 	"checkuser-reason-api": "API: $1",
-	"checkuser-showlog": "Qeydé asayışi",
+	"checkuser-showlog": "Qeydê asayışi weçinê",
 	"checkuser-query": "Bigêrayîşî de vurnayîşanê penîyan",
 	"checkuser-target": "Adresa IPy ya zi nameyê karberi:",
 	"checkuser-users": "Karberî bivîne",
@@ -60,13 +61,13 @@
 	"checkuser-block-limit": "Ti zaf karberan weçino.",
 	"checkuser-block-noreason": "Qe blokan, ti gani yew sebeb bide.",
 	"checkuser-noreason": "Qe bigêrayîşî, ti gani yew sebeb bide.",
-	"checkuser-accounts": "$1 {{PLURAL:$1|hesab|hesaban}} newî",
 	"checkuser-too-many": "Zaf neticiyan esto (ser texminê cigeyrayîşî), şima ra rica keno CIDR qickek bike.\nTiya de IPyan ke sero kar biyo  (5000 max, pê adresan):",
 	"checkuser-user-nonexistent": "Karbero ke ti specife kerd, ay database ma de niesto.",
 	"checkuser-search": "Cı geyre",
 	"checkuser-search-submit": "Cı geyre",
 	"checkuser-search-initiator": "başlî kerdoğ",
 	"checkuser-search-target": "hedef",
+	"checkuser-log-search-target": "Etiket:",
 	"checkuser-ipeditcount": "~$1 karberan pêrıne ra",
 	"checkuser-showmain": "Peyd şori form de KarberKontroli",
 	"checkuser-limited": "'''Ena neticeyan qe sebabanê performansî ra kilm kerd.'''",
@@ -74,5 +75,16 @@
 	"checkuser-create-action": "Vıraziya",
 	"checkuser-email-action": "karberê $1î rê email Bırşe",
 	"checkuser-reset-action": "karberê \"$1\" rê parola nên ke",
-	"checkuser-investigate-reason-label": "Sebeb"
+	"checkuser-investigate-reason-label": "Sebeb",
+	"checkuser-investigate-preliminary-table-cell-edits": "$1 {{PLURAL:$1|vurnayış|vurnayışi}}",
+	"checkuser-investigate-preliminary-table-header-blocked": "Weziyet",
+	"checkuser-investigate-preliminary-table-header-editcount": "Bıvurnê",
+	"checkuser-investigate-preliminary-table-header-groups": "Grube",
+	"checkuser-investigate-preliminary-table-header-name": "Nameykarberi",
+	"checkuser-investigate-preliminary-table-header-wiki": "Wiki",
+	"checkuser-investigate-compare-table-cell-unregistered": "Bêqeydıni",
+	"checkuser-investigate-compare-table-cell-edits": "<b>$1 {{PLURAL:$1|vurnayış|vurnayışi}}</b>",
+	"checkuser-investigate-compare-table-header-username": "Namey karberi",
+	"checkuser-investigate-compare-table-header-activity": "Mabênê tarix",
+	"checkuser-investigate-compare-table-header-ip": "IP"
 }

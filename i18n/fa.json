@@ -1,16 +1,18 @@
 {
 	"@metadata": {
 		"authors": [
+			"Alirezaaa",
+			"Danialbehzadi",
+			"E THP",
 			"Ebraminio",
+			"FarsiNevis",
+			"GMozafarian",
 			"Huji",
 			"Mehran",
 			"MehranVB",
 			"Mjbmr",
 			"Reza1615",
-			"ZxxZxxZ",
-			"Alirezaaa",
-			"Danialbehzadi",
-			"GMozafarian"
+			"ZxxZxxZ"
 		]
 	},
 	"checkuser-summary": "این ابزار تغییرات اخیر را برای به دست آوردن نشانی‌های آی‌پی استفاده شده توسط یک کاربر و یا تعیین ویرایش‌ها و اطلاعات کاربری مرتبط با یک نشانی آی‌پی جستجو می‌کند.\nکاربرها و ویرایش‌های مرتبط با یک نشانی آی‌پی را می‌توان با توجه به اطلاعات سرآیند اکس‌اف‌اف (با افزودن «‏‎/xff» به انتهای نشانی آی‌پی) پیدا کرد.\nهر دو پروتکل IPv4 (معادل CIDR $1-32) و IPv6 (معادل CIDR $2-128) توسط این ابزار پشتیبانی می‌شوند.\nبنا به دلایل عملکردی، بیش از ۵۰۰۰ ویرایش بازگردانده نمی‌شود.\nاز این ابزار طبق سیاست‌ها استفاده کنید.",
@@ -68,7 +70,6 @@
 	"checkuser-block-noreason": "شما باید دلیلی برای قطع دسترسی‌ها ارائه کنید.",
 	"checkuser-centralauth-multilock": "بستن‌های چندگانه حساب‌های کاربری انتخاب‌شده",
 	"checkuser-noreason": "شما باید دلیلی برای این درخواست وارد کنید.",
-	"checkuser-accounts": "$1 {{PLURAL:$1|حساب|حساب}} کاربری تازه",
 	"checkuser-too-many": "تعداد نتایج بسیار زیاد است (طبق تخمین‌های پرسمان)، لطفاً سی‌آی‌دی‌آر را محدودتر کنید.\nدر زیر نشانی‌های آی‌پی استفاده شده را می‌بینید (حداکثر ۵۰۰۰ مورد، به ترتیب نشانی):",
 	"checkuser-user-nonexistent": "کاربر مورد نظر وجود ندارد.",
 	"checkuser-search": "جستجوی موارد سیاههٔ بازرسی کاربر",
@@ -92,5 +93,7 @@
 	"checkuser-reset-action": "گذرواژه کاربر «$1» را از نو تنظیم کرد",
 	"checkuser-token-fail": "نشست با شکست مواجه شد. لطفاً دوباره سعی کنید.",
 	"checkuser-login-failure": "در ورود به {{SITENAME}} با حساب $1 ناموفق بود",
-	"checkuser-login-success": "در ورود به {{SITENAME}} با حساب $1 موفق بود"
+	"checkuser-login-success": "در ورود به {{SITENAME}} با حساب $1 موفق بود",
+	"checkuser-investigate-preliminary-table-cell-wiki-nowiki": "ویکی یافته نشد",
+	"checkuser-investigate-compare-table-button-filter-label": "پالایش نتایج"
 }
