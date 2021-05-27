@@ -2,6 +2,7 @@
 
 namespace MediaWiki\CheckUser\Tests;
 
+use LoggedServiceOptions;
 use MediaWiki\CheckUser\ComparePager;
 use MediaWiki\CheckUser\CompareService;
 use MediaWiki\CheckUser\DurationManager;
@@ -10,6 +11,7 @@ use MediaWiki\CheckUser\UserManager;
 use MediaWiki\MediaWikiServices;
 use MediaWikiIntegrationTestCase;
 use RequestContext;
+use TestAllServiceOptionsUsed;
 use Wikimedia\IPUtils;
 
 /**
@@ -18,6 +20,7 @@ use Wikimedia\IPUtils;
  * @covers \MediaWiki\CheckUser\ComparePager
  */
 class ComparePagerTest extends MediaWikiIntegrationTestCase {
+	use TestAllServiceOptionsUsed;
 
 	/**
 	 * @dataProvider provideDoQuery
@@ -37,17 +40,22 @@ class ComparePagerTest extends MediaWikiIntegrationTestCase {
 
 		$userManager = $this->createMock( UserManager::class );
 		$userManager->method( 'idFromName' )
-			->will(
-				$this->returnValueMap( [
+			->willReturnMap(
+				[
 					[ 'User1', 11111, ],
 					[ 'User2', 22222, ],
 					[ 'InvalidUser', 0 ],
 					[ '', 0 ],
 					[ '1.2.3.9/120', 0 ]
-				] )
+				]
 			);
 
 		$compareService = new CompareService(
+			new LoggedServiceOptions(
+				self::$serviceOptionsAccessLog,
+				CompareService::CONSTRUCTOR_OPTIONS,
+				$services->getMainConfig()
+			),
 			$services->getDBLoadBalancer(),
 			$userManager
 		);

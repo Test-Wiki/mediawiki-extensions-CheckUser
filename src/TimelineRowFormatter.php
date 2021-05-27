@@ -16,6 +16,7 @@ use Message;
 use TitleFormatter;
 use TitleValue;
 use User;
+use Wikimedia\IPUtils;
 use Wikimedia\Rdbms\ILoadBalancer;
 
 class TimelineRowFormatter {
@@ -163,7 +164,7 @@ class TimelineRowFormatter {
 	private function getIpInfo( string $ip ) : string {
 		// Note: in the old check user this links to self with ip as target. Can't do now
 		// because of token. We could prefill a new investigation tab
-		return $ip;
+		return IPUtils::prettifyIP( $ip );
 	}
 
 	/**
@@ -330,8 +331,13 @@ class TimelineRowFormatter {
 	private function getUserLinks( \stdClass $row ) : string {
 		// Note: this is incomplete. It should match the checks
 		// in SpecialCheckUser when displaying the same info
-		$user = User::newFromId( $row->cuc_user );
-		$userId = $user->getId();
+		$userId = $row->cuc_user;
+		if ( $userId > 0 ) {
+			$user = User::newFromId( $userId );
+		} else {
+			// This is an IP
+			$user = User::newFromName( $row->cuc_user_text, false );
+		}
 
 		$links = Html::rawElement(
 			'span', [], Linker::userLink( $userId, $user->getName() )

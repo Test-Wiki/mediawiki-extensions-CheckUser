@@ -49,6 +49,7 @@
 	"checkuser-nomatch-edits": "Ingen matchende resultater blev fundet.\nSeneste redigering var $1 $2.",
 	"checkuser-check": "Tjek",
 	"checkuser-check-this-user": "Tjek denne bruger",
+	"checkuser-investigate-this-user": "Undersøg denne bruger",
 	"checkuser-recent-checks": "Nylige tjek af denne bruger",
 	"checkuser-log-fail": "Kunne ikke tilføje log-post",
 	"checkuser-nolog": "Logfilen blev ikke fundet.",
@@ -93,6 +94,9 @@
 	"checkuser-investigateblock-notice-replace": "Erstat side",
 	"checkuser-investigate": "Undersøg",
 	"checkuser-investigate-page-subtitle": "Igangværende undersøgelse af $1",
+	"checkuser-investigate-subtitle-block-button-label": "Blokér",
+	"checkuser-investigate-subtitle-cancel-button-label": "Annullér",
+	"checkuser-investigate-subtitle-continue-button-label": "Fortsæt",
 	"checkuser-investigate-indicator-new-investigation": "Ny undersøgelse",
 	"checkuser-investigate-tab-compare": "Sammenlign",
 	"checkuser-investigate-tab-timeline": "Tidslinje",
@@ -110,8 +114,11 @@
 	"checkuser-investigate-preliminary-table-header-editcount": "Redigeringer",
 	"checkuser-investigate-preliminary-table-header-groups": "Grupper",
 	"checkuser-investigate-preliminary-table-header-name": "Brugernavn",
+	"checkuser-investigate-preliminary-table-header-wiki": "Wiki",
 	"checkuser-investigate-filters-legend": "Filtre",
 	"checkuser-investigate-compare-copy-button-label": "Vis wikitekst",
+	"checkuser-investigate-compare-table-button-contribs-label": "Bidrag",
 	"checkuser-investigate-compare-table-header-username": "Brugernavn",
-	"checkuser-investigate-compare-table-header-ip": "IP"
+	"checkuser-investigate-compare-table-header-ip": "IP",
+	"checkuser-investigate-tour-addusertargets-title": "Har du brug for mere kontekst?"
 }
