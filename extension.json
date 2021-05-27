@@ -10,7 +10,7 @@
 	"license-name": "GPL-2.0-or-later",
 	"type": "specialpage",
 	"requires": {
-		"MediaWiki": ">= 1.35.0",
+		"MediaWiki": ">= 1.36.0",
 		"platform": {
 			"ext-openssl": "*"
 		}
@@ -58,6 +58,10 @@
 			"value": false,
 			"description": "Whether login attempts should be logged in CheckUser logs"
 		},
+		"CheckUserLogSuccessfulBotLogins": {
+			"value": true,
+			"description": "Whether successful login attempts of accounts in the 'bot' user group should be logged in CheckUser logs (assuming wgCheckUserLogLogins is also true)"
+		},
 		"CheckUserEnableSpecialInvestigate": {
 			"value": false,
 			"description": "Enables Special:Investigate"
@@ -69,29 +73,38 @@
 		"CheckUserMaximumRowCount": {
 			"value": 5000,
 			"description": "Maximum number of rows in cu_changes to be used in any query"
+		},
+		"CheckUserInvestigateMaximumRowCount": {
+			"value": 25000,
+			"description": "Maximum number of rows in cu_changes to be grouped in the Compare table query"
 		}
 	},
 	"APIListModules": {
-		"checkuser": "ApiQueryCheckUser",
-		"checkuserlog": "ApiQueryCheckUserLog"
+		"checkuser": "MediaWiki\\CheckUser\\Api\\ApiQueryCheckUser",
+		"checkuserlog": "MediaWiki\\CheckUser\\Api\\ApiQueryCheckUserLog"
+	},
+	"HookHandlers": {
+		"preferences": {
+			"class": "MediaWiki\\CheckUser\\HookHandler\\Preferences"
+		}
 	},
 	"Hooks": {
 		"RecentChange_save": [
-			"CheckUserHooks::updateCheckUserData",
-			"CheckUserHooks::maybePruneIPData"
+			"MediaWiki\\CheckUser\\Hooks::updateCheckUserData",
+			"MediaWiki\\CheckUser\\Hooks::maybePruneIPData"
 		],
-		"EmailUser": "CheckUserHooks::updateCUEmailData",
-		"User::mailPasswordInternal": "CheckUserHooks::updateCUPasswordResetData",
-		"LocalUserCreated": "CheckUserHooks::onLocalUserCreated",
-		"UserMergeAccountFields": "CheckUserHooks::onUserMergeAccountFields",
-		"RenameUserSQL": "CheckUserHooks::onRenameUserSQL",
-		"ParserTestTables": "CheckUserHooks::checkUserParserTestTables",
-		"LoadExtensionSchemaUpdates": "CheckUserHooks::onLoadExtensionSchemaUpdates",
-		"ContributionsToolLinks": "CheckUserHooks::checkUserContributionsLinks",
-		"PerformRetroactiveAutoblock": "CheckUserHooks::doRetroactiveAutoblock",
-		"AuthManagerLoginAuthenticateAudit": "CheckUserHooks::onAuthManagerLoginAuthenticateAudit",
-		"SpecialPage_initList": "CheckUserHooks::onSpecialPage_initList",
-		"UserGetAllRights": "CheckUserHooks::onUserGetAllRights"
+		"EmailUser": "MediaWiki\\CheckUser\\Hooks::updateCUEmailData",
+		"User::mailPasswordInternal": "MediaWiki\\CheckUser\\Hooks::updateCUPasswordResetData",
+		"LocalUserCreated": "MediaWiki\\CheckUser\\Hooks::onLocalUserCreated",
+		"UserMergeAccountFields": "MediaWiki\\CheckUser\\Hooks::onUserMergeAccountFields",
+		"RenameUserSQL": "MediaWiki\\CheckUser\\Hooks::onRenameUserSQL",
+		"ParserTestTables": "MediaWiki\\CheckUser\\Hooks::checkUserParserTestTables",
+		"LoadExtensionSchemaUpdates": "MediaWiki\\CheckUser\\Hooks::onLoadExtensionSchemaUpdates",
+		"ContributionsToolLinks": "MediaWiki\\CheckUser\\Hooks::checkUserContributionsLinks",
+		"PerformRetroactiveAutoblock": "MediaWiki\\CheckUser\\Hooks::doRetroactiveAutoblock",
+		"AuthManagerLoginAuthenticateAudit": "MediaWiki\\CheckUser\\Hooks::onAuthManagerLoginAuthenticateAudit",
+		"SpecialPage_initList": "MediaWiki\\CheckUser\\Hooks::onSpecialPage_initList",
+		"GetPreferences": "preferences"
 	},
 	"MessagesDirs": {
 		"CheckUser": [
@@ -99,31 +112,28 @@
 			"i18n/api"
 		]
 	},
+	"attributes": {
+		"EventLogging": {
+			"Schemas": {
+				"SpecialInvestigate": "/analytics/legacy/specialinvestigate/1.0.0"
+			}
+		}
+	},
 	"ResourceModules": {
 		"ext.checkUser": {
-			"scripts": [
-				"modules/ext.checkuser.cidr.js",
-				"modules/ext.checkuser.caMultiLock.js"
-			],
-			"dependencies": [
-				"mediawiki.util"
-			],
-			"messages": [
-				"checkuser-centralauth-multilock"
-			]
-		},
-		"ext.checkUser.investigate.styles": {
-			"styles": [
-				"modules/ext.checkuser.investigate.less"
-			]
-		},
-		"ext.checkUser.investigate": {
+			"localBasePath": "modules/ext.checkUser",
+			"remoteExtPath": "CheckUser/modules/ext.checkUser",
 			"packageFiles": [
-				"modules/ext.checkuser.investigate.init.js",
-				"modules/ext.checkuser.investigate.tables.js",
-				"modules/ext.checkuser.investigate.copy.js",
+				"dispatcher.js",
+				"checkuser/cidr.js",
+				"checkuser/caMultiLock.js",
+				"investigateblock/investigateblock.js",
+				"investigate/init.js",
+				"investigate/tables.js",
+				"investigate/copy.js",
+				"investigate/blockform.js",
 				{
-					"name": "modules/message.json",
+					"name": "investigate/message.json",
 					"callback": "MediaWiki\\CheckUser\\ToolLinksMessages::getParsedMessage",
 					"callbackParam": "checkuser-investigate-compare-toollinks"
 				}
@@ -131,39 +141,76 @@
 			"dependencies": [
 				"jquery.tablesorter",
 				"oojs-ui-widgets",
-				"oojs-ui.styles.icons-content",
 				"oojs-ui.styles.icons-editing-core",
+				"oojs-ui.styles.icons-editing-advanced",
 				"oojs-ui.styles.icons-interactions",
+				"oojs-ui.styles.icons-location",
 				"oojs-ui.styles.icons-moderation",
+				"oojs-ui.styles.icons-user",
+				"mediawiki.pager.tablePager",
 				"mediawiki.storage",
+				"mediawiki.Title",
 				"mediawiki.Uri",
+				"mediawiki.util",
 				"mediawiki.widgets"
 			],
 			"messages": [
+				"checkuser-centralauth-multilock",
 				"checkuser-investigate-compare-copy-button-label",
 				"checkuser-investigate-compare-copy-message-label",
 				"checkuser-investigate-compare-table-button-add-ip-targets-label",
 				"checkuser-investigate-compare-table-button-add-user-targets-label",
-				"checkuser-investigate-compare-table-button-filter-label"
+				"checkuser-investigate-compare-table-button-add-user-targets-log-label",
+				"checkuser-investigate-compare-table-button-checks-label",
+				"checkuser-investigate-compare-table-button-contribs-label",
+				"checkuser-investigate-compare-table-button-filter-label",
+				"checkuser-investigate-subtitle-cancel-button-label",
+				"checkuser-investigate-subtitle-continue-button-label"
 			]
 		},
-		"ext.checkUser.investigateblock.styles": {
+		"ext.checkUser.styles": {
+			"localBasePath": "modules/ext.checkUser.styles",
+			"remoteExtPath": "CheckUser/modules/ext.checkUser.styles",
 			"styles": [
-				"modules/ext.checkuser.investigateblock.less"
+				"investigate.less",
+				"investigateblock.less"
 			]
 		},
-		"ext.checkUser.investigateblock": {
-			"packageFiles": [
-				"modules/ext.checkuser.investigateblock.js"
+		"ext.guidedTour.tour.checkuserinvestigateform": {
+			"localBasePath": "modules/ext.guidedTour.tour.checkuserinvestigateform",
+			"remoteExtPath": "CheckUser/modules/ext.guidedTour.tour.checkuserinvestigateform",
+			"scripts": [
+				"checkuserinvestigateform.js"
+			],
+			"dependencies": "ext.guidedTour",
+			"messages": [
+				"checkuser-investigate-tour-targets-title",
+				"checkuser-investigate-tour-targets-desc"
+			]
+		},
+		"ext.guidedTour.tour.checkuserinvestigate": {
+			"localBasePath": "modules/ext.guidedTour.tour.checkuserinvestigate",
+			"remoteExtPath": "CheckUser/modules/ext.guidedTour.tour.checkuserinvestigate",
+			"scripts": [
+				"checkuserinvestigate.js"
 			],
 			"dependencies": [
-				"oojs-ui-widgets"
+				"ext.guidedTour",
+				"ext.checkUser"
+			],
+			"messages": [
+				"checkuser-investigate-tour-useragents-title",
+				"checkuser-investigate-tour-useragents-desc",
+				"checkuser-investigate-tour-addusertargets-title",
+				"checkuser-investigate-tour-addusertargets-desc",
+				"checkuser-investigate-tour-filterip-title",
+				"checkuser-investigate-tour-filterip-desc",
+				"checkuser-investigate-tour-block-title",
+				"checkuser-investigate-tour-block-desc",
+				"checkuser-investigate-tour-copywikitext-title",
+				"checkuser-investigate-tour-copywikitext-desc"
 			]
 		}
-	},
-	"ResourceFileModulePaths": {
-		"localBasePath": "",
-		"remoteExtPath": "CheckUser"
 	},
 	"GroupPermissions": {
 		"checkuser": {
@@ -176,17 +223,22 @@
 		"checkuser-log"
 	],
 	"SpecialPages": {
-		"CheckUser": "SpecialCheckUser",
-		"CheckUserLog": "SpecialCheckUserLog"
+		"CheckUser": {
+			"class": "MediaWiki\\CheckUser\\Specials\\SpecialCheckUser",
+			"services": [
+				"LinkBatchFactory",
+				"BlockPermissionCheckerFactory"
+			]
+		},
+		"CheckUserLog": {
+			"class": "MediaWiki\\CheckUser\\Specials\\SpecialCheckUserLog",
+			"services": [
+				"LinkBatchFactory",
+				"PermissionManager"
+			]
+		}
 	},
 	"AutoloadClasses": {
-		"CheckUserHooks": "includes/CheckUserHooks.php",
-		"CheckUserLogPager": "includes/CheckUserLogPager.php",
-		"SpecialCheckUser": "includes/specials/SpecialCheckUser.php",
-		"SpecialCheckUserLog": "includes/specials/SpecialCheckUserLog.php",
-		"CheckUserEncryptedData": "includes/CheckUserEncryptedData.php",
-		"ApiQueryCheckUser": "includes/api/ApiQueryCheckUser.php",
-		"ApiQueryCheckUserLog": "includes/api/ApiQueryCheckUserLog.php",
 		"PopulateCheckUserTable": "maintenance/populateCheckUserTable.php"
 	},
 	"ServiceWiringFiles": [

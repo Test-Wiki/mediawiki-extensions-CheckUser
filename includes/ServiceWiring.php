@@ -4,7 +4,8 @@ use MediaWiki\CheckUser\ComparePagerFactory;
 use MediaWiki\CheckUser\CompareService;
 use MediaWiki\CheckUser\DurationManager;
 use MediaWiki\CheckUser\EventLogger;
-use MediaWiki\CheckUser\InvestigateLogPagerFactory;
+use MediaWiki\CheckUser\GuidedTour\TourLauncher;
+use MediaWiki\CheckUser\Hook\HookRunner;
 use MediaWiki\CheckUser\PreliminaryCheckPagerFactory;
 use MediaWiki\CheckUser\PreliminaryCheckService;
 use MediaWiki\CheckUser\TimelinePagerFactory;
@@ -13,6 +14,7 @@ use MediaWiki\CheckUser\TimelineService;
 use MediaWiki\CheckUser\TokenManager;
 use MediaWiki\CheckUser\TokenQueryManager;
 use MediaWiki\CheckUser\UserManager;
+use MediaWiki\Config\ServiceOptions;
 use MediaWiki\MediaWikiServices;
 
 return [
@@ -28,6 +30,10 @@ return [
 	},
 	'CheckUserCompareService' => function ( MediaWikiServices $services ) : CompareService {
 		return new CompareService(
+			new ServiceOptions(
+				CompareService::CONSTRUCTOR_OPTIONS,
+				$services->getMainConfig()
+			),
 			$services->getDBLoadBalancer(),
 			$services->get( 'CheckUserUserManager' )
 		);
@@ -51,10 +57,9 @@ return [
 	'CheckUserDurationManager' => function ( MediaWikiServices $services ) : DurationManager {
 		return new DurationManager();
 	},
-	'CheckUserInvestigateLogPagerFactory' => function (
-		MediaWikiServices $services
-	) : InvestigateLogPagerFactory {
-		return new InvestigateLogPagerFactory(
+	'CheckUserGuidedTourLauncher' => function ( MediaWikiServices $services ) : TourLauncher {
+		return new TourLauncher(
+			ExtensionRegistry::getInstance(),
 			$services->getLinkRenderer()
 		);
 	},
@@ -95,7 +100,7 @@ return [
 	) : TimelinePagerFactory {
 		return new TimelinePagerFactory(
 			$services->getLinkRenderer(),
-			$services->getHookContainer(),
+			$services->get( 'CheckUserHookRunner' ),
 			$services->get( 'CheckUserTokenQueryManager' ),
 			$services->get( 'CheckUserDurationManager' ),
 			$services->get( 'CheckUserTimelineService' ),
@@ -112,6 +117,13 @@ return [
 	) : EventLogger {
 		return new EventLogger(
 			\ExtensionRegistry::getInstance()
+		);
+	},
+	'CheckUserHookRunner' => function (
+		MediaWikiServices $services
+	) : HookRunner {
+		return new HookRunner(
+			$services->getHookContainer()
 		);
 	}
 ];

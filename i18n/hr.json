@@ -61,7 +61,7 @@
 	"checkuser-block-limit": "Odabrano je previše suradnika.",
 	"checkuser-block-noreason": "Morate upisati razlog za blokiranje.",
 	"checkuser-noreason": "Morate navesti razlog za ovaj upit.",
-	"checkuser-too-many": "Pronađeno je previše rezultata (prema procjeni upita), molimo Vas, suzite opseg CIDR-a. Slijede rabljene IP adrese (najviše njih 5000, poredane po adresi):",
+	"checkuser-too-many": "Pronađeno je previše rezultata (prema procjeni upita), molimo Vas, suzite opseg CIDR-a. Slijede rabljene IP adrese (najviše njih $1, poredane po adresi):",
 	"checkuser-user-nonexistent": "Traženi suradnik (suradničko ime) ne postoji.",
 	"checkuser-search": "Traži",
 	"checkuser-search-submit": "Traži",
@@ -94,10 +94,13 @@
 	"checkuser-investigate-filters-legend": "Filtri",
 	"checkuser-investigate-filters-exclude-targets-label": "Skrij navedene suradnike ili IP-adrese",
 	"checkuser-investigate-compare-copy-button-label": "Pokaži wikitekst",
-	"checkuser-investigate-compare-toollinks-geolocate": "Geolociraj",
-	"checkuser-investigate-compare-toollinks-tor-check": "Provjera Tora",
+	"checkuser-investigate-compare-toollinks-ipcheck": "Provjera proxyja",
 	"checkuser-investigate-compare-table-button-add-ip-targets-label": "Pokaži sve suradnike s ovoga IP-a",
 	"checkuser-investigate-compare-table-button-add-user-targets-label": "Prikaži sve IP adrese ovog suradnika",
+	"checkuser-investigate-compare-table-button-checks-label": "Provjere",
+	"checkuser-investigate-compare-table-button-contribs-label": "Doprinosi",
 	"checkuser-investigate-compare-table-cell-unregistered": "Neregistrirani",
-	"checkuser-investigate-compare-table-header-username": "Suradničko ime"
+	"checkuser-investigate-compare-table-header-username": "Suradničko ime",
+	"checkuser-investigate-tour-addusertargets-title": "Potrebnost širega konteksta?",
+	"checkuser-investigate-tour-filterip-title": "Sužavanje Vaše istrage?"
 }
