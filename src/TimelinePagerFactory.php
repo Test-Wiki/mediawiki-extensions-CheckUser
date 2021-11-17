@@ -5,6 +5,7 @@ namespace MediaWiki\CheckUser;
 use IContextSource;
 use MediaWiki\CheckUser\Hook\CheckUserFormatRowHook;
 use MediaWiki\Linker\LinkRenderer;
+use Psr\Log\LoggerInterface;
 
 class TimelinePagerFactory implements PagerFactory {
 	/** @var LinkRenderer */
@@ -25,13 +26,17 @@ class TimelinePagerFactory implements PagerFactory {
 	/** @var TimelineRowFormatterFactory */
 	private $rowFormatterFactory;
 
+	/** @var LoggerInterface */
+	private $logger;
+
 	public function __construct(
 		LinkRenderer $linkRenderer,
 		CheckUserFormatRowHook $formatRowHookRunner,
 		TokenQueryManager $tokenQueryManager,
 		DurationManager $durationManager,
 		TimelineService $service,
-		TimelineRowFormatterFactory $rowFormatterFactory
+		TimelineRowFormatterFactory $rowFormatterFactory,
+		LoggerInterface $logger
 	) {
 		$this->linkRenderer = $linkRenderer;
 		$this->formatRowHookRunner = $formatRowHookRunner;
@@ -39,12 +44,13 @@ class TimelinePagerFactory implements PagerFactory {
 		$this->durationManager = $durationManager;
 		$this->service = $service;
 		$this->rowFormatterFactory = $rowFormatterFactory;
+		$this->logger = $logger;
 	}
 
 	/**
 	 * @inheritDoc
 	 */
-	public function createPager( IContextSource $context ) : TimelinePager {
+	public function createPager( IContextSource $context ): TimelinePager {
 		$rowFormatter = $this->rowFormatterFactory->createRowFormatter(
 			$context->getUser(), $context->getLanguage()
 		);
@@ -56,7 +62,8 @@ class TimelinePagerFactory implements PagerFactory {
 			$this->tokenQueryManager,
 			$this->durationManager,
 			$this->service,
-			$rowFormatter
+			$rowFormatter,
+			$this->logger
 		 );
 	}
 }

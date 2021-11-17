@@ -16,9 +16,13 @@ use MediaWiki\Block\BlockPermissionCheckerFactory;
 use MediaWiki\Block\DatabaseBlock;
 use MediaWiki\Cache\LinkBatchFactory;
 use MediaWiki\CheckUser\Hooks as CUHooks;
+use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\RevisionRecord;
+use MediaWiki\User\CentralId\CentralIdLookupFactory;
+use MediaWiki\User\UserGroupManager;
 use OOUI\IconWidget;
+use Psr\Log\LoggerInterface;
 use RequestContext;
 use SpecialBlock;
 use SpecialPage;
@@ -61,18 +65,34 @@ class SpecialCheckUser extends SpecialPage {
 	/** @var BlockPermissionCheckerFactory */
 	private $blockPermissionCheckerFactory;
 
+	/** @var UserGroupManager */
+	private $userGroupManager;
+
+	/** @var LoggerInterface */
+	private $logger;
+
+	/** @var CentralIdLookup */
+	private $centralIdLookup;
+
 	/**
 	 * @param LinkBatchFactory $linkBatchFactory
 	 * @param BlockPermissionCheckerFactory $blockPermissionCheckerFactory
+	 * @param UserGroupManager $userGroupManager
+	 * @param CentralIdLookupFactory $centralIdLookupFactory
 	 */
 	public function __construct(
 		LinkBatchFactory $linkBatchFactory,
-		BlockPermissionCheckerFactory $blockPermissionCheckerFactory
+		BlockPermissionCheckerFactory $blockPermissionCheckerFactory,
+		UserGroupManager $userGroupManager,
+		CentralIdLookupFactory $centralIdLookupFactory
 	) {
 		parent::__construct( 'CheckUser', 'checkuser' );
 
 		$this->linkBatchFactory = $linkBatchFactory;
 		$this->blockPermissionCheckerFactory = $blockPermissionCheckerFactory;
+		$this->userGroupManager = $userGroupManager;
+		$this->logger = LoggerFactory::getInstance( 'CheckUser' );
+		$this->centralIdLookup = $centralIdLookupFactory->getLookup();
 	}
 
 	public function doesWrites() {
@@ -507,8 +527,12 @@ class SpecialCheckUser extends SpecialPage {
 			if ( $page->exists() ) {
 				$flags |= EDIT_MINOR;
 			}
-			$page->doEditContent( new WikitextContent( $tag ), $summary,
-				$flags, false, $this->getUser() );
+			$page->doUserEditContent(
+				new WikitextContent( $tag ),
+				$this->getUser(),
+				$summary,
+				$flags
+			);
 		}
 	}
 
@@ -539,17 +563,14 @@ class SpecialCheckUser extends SpecialPage {
 					$revWhere['joins']
 				) );
 			}
-			$logWhere = $actorMigration->getWhere( $dbr, 'log_user', $user );
-			foreach ( $logWhere['orconds'] as $cond ) {
-				$lastEdit = max( $lastEdit, $dbr->selectField(
-					[ 'logging' ] + $logWhere['tables'],
-					'log_timestamp',
-					$cond,
-					__METHOD__,
-					[ 'ORDER BY' => 'log_timestamp DESC' ],
-					$logWhere['joins']
-				) );
-			}
+			$lastEdit = max( $lastEdit, $dbr->selectField(
+				[ 'logging', 'actor' ],
+				'log_timestamp',
+				[ 'actor_name' => $userName ],
+				__METHOD__,
+				[ 'ORDER BY' => 'log_timestamp DESC' ],
+				[ 'actor' => [ 'JOIN', 'actor_id=log_actor' ] ]
+			) );
 
 			if ( $lastEdit ) {
 				$lastEditTime = wfTimestamp( TS_MW, $lastEdit );
@@ -609,7 +630,7 @@ class SpecialCheckUser extends SpecialPage {
 	 * @param int|null $limit
 	 * @return IResultWrapper
 	 */
-	protected function doUserIPsDBRequest( $user_id, $period = 0, $limit = null ) : IResultWrapper {
+	protected function doUserIPsDBRequest( $user_id, $period = 0, $limit = null ): IResultWrapper {
 		if ( $limit === null ) {
 			// We add 1 to the row count here because the number of rows returned is used to determine
 			// whether the data has been truncated.
@@ -684,7 +705,7 @@ class SpecialCheckUser extends SpecialPage {
 	 * @param int|null $limit
 	 * @return array
 	 */
-	protected function getIPSets( IResultWrapper $result, $limit = null ) : array {
+	protected function getIPSets( IResultWrapper $result, $limit = null ): array {
 		if ( $limit === null ) {
 			$limit = $this->getConfig()->get( 'CheckUserMaximumRowCount' );
 		}
@@ -806,7 +827,7 @@ class SpecialCheckUser extends SpecialPage {
 				[ 'wpTarget' => "#{$block->getId()}" ]
 			);
 		} else {
-			$userPage = Title::makeTitle( NS_USER, $block->getTarget() );
+			$userPage = Title::makeTitle( NS_USER, $block->getTargetName() );
 			$ret = $this->getLinkRenderer()->makeKnownLink(
 				SpecialPage::getTitleFor( 'Log' ),
 				$this->msg( 'checkuser-blocked' )->text(),
@@ -820,7 +841,7 @@ class SpecialCheckUser extends SpecialPage {
 
 		// Add the blocked range if the block is on a range
 		if ( $block->getType() == DatabaseBlock::TYPE_RANGE ) {
-			$ret .= ' - ' . htmlspecialchars( $block->getTarget() );
+			$ret .= ' - ' . htmlspecialchars( $block->getTargetName() );
 		}
 
 		return '<strong>' .
@@ -933,7 +954,7 @@ class SpecialCheckUser extends SpecialPage {
 	 */
 	protected function IPEditsTooManyDB(
 		$ip, $xfor, $index, $period = 0, $limit = null
-	) : IResultWrapper {
+	): IResultWrapper {
 		if ( $limit === null ) {
 			// We add 1 to the row count here because the number of rows returned is used to determine
 			// whether the data has been truncated.
@@ -1032,7 +1053,7 @@ class SpecialCheckUser extends SpecialPage {
 	 */
 	protected function doIPEditsDBRequest(
 		$ip, $xfor, $index, $period = 0, $limit = null
-	) : IResultWrapper {
+	): IResultWrapper {
 		if ( $limit === null ) {
 			// We add 1 to the row count here because the number of rows returned is used to determine
 			// whether the data has been truncated.
@@ -1215,7 +1236,7 @@ class SpecialCheckUser extends SpecialPage {
 	 * @param int|null $limit
 	 * @return IResultWrapper
 	 */
-	protected function doUserEditsDBRequest( $user_id, $period = 0, $limit = null ) : IResultWrapper {
+	protected function doUserEditsDBRequest( $user_id, $period = 0, $limit = null ): IResultWrapper {
 		if ( $limit === null ) {
 			$limit = $this->getConfig()->get( 'CheckUserMaximumRowCount' );
 		}
@@ -1348,7 +1369,7 @@ class SpecialCheckUser extends SpecialPage {
 	 * @param int $period
 	 * @return IResultWrapper
 	 */
-	protected function IPUsersTooManyDB( $ip, $xfor, $index, $period = 0 ) : IResultWrapper {
+	protected function IPUsersTooManyDB( $ip, $xfor, $index, $period = 0 ): IResultWrapper {
 		return $this->IPEditsTooManyDB( $ip, $xfor, $index, $period );
 	}
 
@@ -1376,7 +1397,7 @@ class SpecialCheckUser extends SpecialPage {
 	 */
 	protected function doIPUsersDBRequest(
 		$ip, $xfor, $index, $period = 0, $limit = 10000
-	) : IResultWrapper {
+	): IResultWrapper {
 		$dbr = wfGetDB( DB_REPLICA );
 		$conds = self::getIpConds( $dbr, $ip, $xfor );
 		if ( $conds === false ) {
@@ -1406,7 +1427,7 @@ class SpecialCheckUser extends SpecialPage {
 	 * @param IResultWrapper $result
 	 * @return array[]
 	 */
-	protected function getUserSets( IResultWrapper $result ) : array {
+	protected function getUserSets( IResultWrapper $result ): array {
 		$userSets = [
 			'first' => [],
 			'last' => [],
@@ -1506,7 +1527,7 @@ class SpecialCheckUser extends SpecialPage {
 			} else {
 				$idforlink = $users_ids[$name];
 			}
-			if ( $classnouser === true ) {
+			if ( $classnouser ) {
 				$s .= '<span class=\'mw-checkuser-nonexistent-user\'>';
 			} else {
 				$s .= '<span>';
@@ -1594,7 +1615,7 @@ class SpecialCheckUser extends SpecialPage {
 					// Case wikimap configured without CentralAuth extension
 					$user = $this->getUser();
 					// Get effective Local user groups since there is a wikimap but there is no CA
-					$gbUserGroups = $user->getEffectiveGroups();
+					$gbUserGroups = $this->userGroupManager->getUserEffectiveGroups( $user );
 					$linkGB = Html::element( 'a',
 						[
 							'href' => $centralGBUrl . "/" . $name,
@@ -1809,7 +1830,7 @@ class SpecialCheckUser extends SpecialPage {
 
 		// Show if account is local only
 		if ( $user->getId() &&
-			CentralIdLookup::factory()
+			$this->centralIdLookup
 				->centralIdFromLocalUser( $user, CentralIdLookup::AUDIENCE_RAW ) === 0
 		) {
 			// @todo FIXME: i18n issue: Hard coded parentheses.
@@ -1822,7 +1843,7 @@ class SpecialCheckUser extends SpecialPage {
 				$flags[] = '<b>(' . $this->msg( 'checkuser-locked' )->escaped() . ')</b>';
 			}
 			$list = [];
-			foreach ( $user->getGroups() as $group ) {
+			foreach ( $this->userGroupManager->getUserGroups( $user ) as $group ) {
 				$list[] = self::buildGroupLink( $group, $user->getName() );
 			}
 			$groups = $this->getLanguage()->commaList( $list );
@@ -1877,7 +1898,7 @@ class SpecialCheckUser extends SpecialPage {
 		} else {
 			$idforlink = $row->cuc_user;
 		}
-		if ( $classnouser === true ) {
+		if ( $classnouser ) {
 			$line .= '<span class=\'mw-checkuser-nonexistent-user\'>';
 		} else {
 			$line .= '<span>';
@@ -2090,7 +2111,7 @@ class SpecialCheckUser extends SpecialPage {
 		if ( is_array( $links ) ) {
 			return implode( ' ', $links );
 		} else {
-			wfDebugLog( __CLASS__,
+			$this->logger->warning(
 				__METHOD__ . ': Expected array from SpecialCheckUserGetLinksFromRow $links param,'
 				. ' but received ' . gettype( $links )
 			);
@@ -2218,8 +2239,8 @@ class SpecialCheckUser extends SpecialPage {
 		$fname = __METHOD__;
 
 		DeferredUpdates::addCallableUpdate(
-			function () use ( $data, $timestamp, $fname ) {
-				$dbw = wfGetDB( DB_MASTER );
+			static function () use ( $data, $timestamp, $fname ) {
+				$dbw = wfGetDB( DB_PRIMARY );
 				$dbw->insert(
 					'cu_log',
 					[
