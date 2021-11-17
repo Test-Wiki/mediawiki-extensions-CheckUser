@@ -198,7 +198,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 	 *
 	 * @return IndexLayout
 	 */
-	private function getLayout() : IndexLayout {
+	private function getLayout(): IndexLayout {
 		if ( $this->layout === null ) {
 			$this->getOutput()->enableOOUI();
 			$this->getOutput()->addModuleStyles( [
@@ -221,7 +221,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 	 * @param string $par
 	 * @return self
 	 */
-	private function addTabs( string $par ) : self {
+	private function addTabs( string $par ): self {
 		$config = [];
 		[
 			'tabSelectWidget' => $tabSelectWidget,
@@ -271,7 +271,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 	 * @param string $html
 	 * @return self
 	 */
-	private function addHtml( string $html ) : self {
+	private function addHtml( string $html ): self {
 		$config = [];
 		[
 			'contentPanel' => $contentPanel
@@ -292,7 +292,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 	 * @param \ParserOutput $parserOutput
 	 * @return self
 	 */
-	private function addParserOutput( \ParserOutput $parserOutput ) : self {
+	private function addParserOutput( \ParserOutput $parserOutput ): self {
 		$this->getOutput()->addParserOutputMetadata( $parserOutput );
 		$this->addHTML( $parserOutput->getText() );
 
@@ -305,7 +305,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 	 * @param string $par
 	 * @return self
 	 */
-	private function addTabContent( string $par ) : self {
+	private function addTabContent( string $par ): self {
 		$startTime = $this->eventLogger->getTime();
 
 		switch ( $par ) {
@@ -313,7 +313,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 				$pager = $this->preliminaryCheckPagerFactory->createPager( $this->getContext() );
 				$hasIpTargets = (bool)array_filter(
 					$this->getTokenData()['targets'] ?? [],
-					function ( $target ) {
+					static function ( $target ) {
 						return IPUtils::isIPAddress( $target );
 					}
 				);
@@ -423,7 +423,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 	/**
 	 * @param array $logData
 	 */
-	private function logQuery( array $logData ) : void {
+	private function logQuery( array $logData ): void {
 		$relevantTargetsCount = count( array_diff(
 			$this->getTokenData()['targets'] ?? [],
 			$this->getTokenData()['exclude-targets'] ?? []
@@ -447,7 +447,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 	 *
 	 * @return string
 	 */
-	private function getTabParam( string $tab ) : string {
+	private function getTabParam( string $tab ): string {
 		$name = $this->getTabMessage( $tab )->inLanguage( $this->contentLanguage )->text();
 		return str_replace( ' ', '_', $name );
 	}
@@ -459,7 +459,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 	 *
 	 * @return Message
 	 */
-	private function getTabMessage( string $tab ) : Message {
+	private function getTabMessage( string $tab ): Message {
 		return $this->msg( 'checkuser-investigate-tab-' . $tab );
 	}
 
@@ -492,7 +492,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 				'wgCheckUserInvestigateExcludeTargets' => $excludeTargets,
 			] );
 
-			$targetsText = $this->getLanguage()->listToText( array_map( function ( $target ) {
+			$targetsText = $this->getLanguage()->listToText( array_map( static function ( $target ) {
 				return Html::rawElement( 'strong', [], htmlspecialchars( $target ) );
 			}, $targets ) );
 			$subtitle = $this->msg( 'checkuser-investigate-page-subtitle', $targetsText );
@@ -645,7 +645,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 					'exists' => true,
 					'ipallowed' => true,
 					'iprange' => true,
-					'default' => implode( "\n", $data['targets'] ?? [] ),
+					'default' => '',
 					'input' => [
 						'autocomplete' => false,
 					],
@@ -724,7 +724,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 	 *
 	 * @return array
 	 */
-	private function getTokenData() : array {
+	private function getTokenData(): array {
 		if ( $this->tokenData === null ) {
 			$this->tokenData = $this->tokenQueryManager->getDataFromRequest( $this->getRequest() );
 		}
@@ -835,7 +835,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 	 * @param array $update
 	 * @return string
 	 */
-	private function getUpdatedToken( array $update ) : string {
+	private function getUpdatedToken( array $update ): string {
 		return $this->tokenQueryManager->updateToken(
 			$this->getRequest(),
 			$update
@@ -848,10 +848,10 @@ class SpecialInvestigate extends \FormSpecialPage {
 	 * @param array $update
 	 * @return string
 	 */
-	private function getRedirectUrl( array $update ) : string {
+	private function getRedirectUrl( array $update ): string {
 		$parts = wfParseURL( $this->getRequest()->getFullRequestURL() );
 		$query = isset( $parts['query'] ) ? wfCgiToArray( $parts['query'] ) : [];
-		$data = array_filter( array_merge( $query, $update ), function ( $value ) {
+		$data = array_filter( array_merge( $query, $update ), static function ( $value ) {
 			return $value !== null;
 		} );
 		$parts['query'] = wfArrayToCgi( $data );
@@ -865,7 +865,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 	 * @param string $field
 	 * @return string[]
 	 */
-	private function getArrayFromField( array $data, string $field ) : array {
+	private function getArrayFromField( array $data, string $field ): array {
 		if ( !isset( $data[$field] ) ) {
 			return [];
 		}
@@ -886,7 +886,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 	 *
 	 * @return bool
 	 */
-	private function usingFilters() : bool {
+	private function usingFilters(): bool {
 		return count( $this->getTokenData()['exclude-targets'] ?? [] ) > 0
 			|| $this->getDuration() !== '';
 	}
@@ -896,7 +896,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 	 *
 	 * @return string
 	 */
-	private function getDuration() : string {
+	private function getDuration(): string {
 		return $this->durationManager->getFromRequest( $this->getRequest() );
 	}
 
@@ -908,7 +908,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 	 *
 	 * @return bool If the tour is being relaunched and a redirect was set.
 	 */
-	public function reLaunchTour() : bool {
+	public function reLaunchTour(): bool {
 		if ( $this->getRequest()->getMethod() !== 'GET' ) {
 			return false;
 		}
@@ -956,7 +956,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 	 * @param string $tour
 	 * @return void
 	 */
-	private function launchTour( string $tour ) : void {
+	private function launchTour( string $tour ): void {
 		$user = $this->getUser();
 
 		$preference = '';
@@ -985,7 +985,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 	/**
 	 * Add the subtitle to the page.
 	 */
-	private function addSubtitle() : void {
+	private function addSubtitle(): void {
 		$subpage = false;
 		$token = null;
 		$tour = self::TOUR_INVESTIGATE_FORM;
@@ -1015,7 +1015,7 @@ class SpecialInvestigate extends \FormSpecialPage {
 
 		$this->subtitleLinksHookRunner->onCheckUserSubtitleLinks( $this->getContext(), $links );
 
-		$subtitle = implode( ' | ', array_filter( $links, function ( $link ) {
+		$subtitle = implode( ' | ', array_filter( $links, static function ( $link ) {
 			return (bool)$link;
 		} ) );
 

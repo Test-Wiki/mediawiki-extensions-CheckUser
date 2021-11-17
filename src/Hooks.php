@@ -12,6 +12,7 @@ use MediaWiki\Block\DatabaseBlock;
 use MediaWiki\CheckUser\Specials\SpecialInvestigate;
 use MediaWiki\CheckUser\Specials\SpecialInvestigateBlock;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\User\UserFactory;
 use PopulateCheckUserTable;
 use RecentChange;
 use RenameuserSQL;
@@ -166,7 +167,7 @@ class Hooks {
 
 		\Hooks::run( 'CheckUserInsertForRecentChange', [ $rc, &$rcRow ] );
 
-		$dbw = $services->getDBLoadBalancer()->getConnectionRef( DB_MASTER );
+		$dbw = $services->getDBLoadBalancer()->getConnectionRef( DB_PRIMARY );
 		$dbw->insert( 'cu_changes', $rcRow, __METHOD__ );
 
 		return true;
@@ -202,7 +203,7 @@ class Hooks {
 		$agent = $contLang->truncateForDatabase( $agent, self::TEXT_FIELD_LENGTH );
 		$xff = $contLang->truncateForDatabase( $xff, self::TEXT_FIELD_LENGTH );
 
-		$dbw = $services->getDBLoadBalancer()->getConnectionRef( DB_MASTER );
+		$dbw = $services->getDBLoadBalancer()->getConnectionRef( DB_PRIMARY );
 		$rcRow = [
 			'cuc_namespace'  => NS_USER,
 			'cuc_title'      => '',
@@ -298,8 +299,8 @@ class Hooks {
 		}
 
 		$fname = __METHOD__;
-		DeferredUpdates::addCallableUpdate( function () use ( $lb, $rcRow, $fname ) {
-			$dbw = $lb->getConnectionRef( DB_MASTER );
+		DeferredUpdates::addCallableUpdate( static function () use ( $lb, $rcRow, $fname ) {
+			$dbw = $lb->getConnectionRef( DB_PRIMARY );
 			$dbw->insert( 'cu_changes', $rcRow, $fname );
 		} );
 
@@ -347,7 +348,7 @@ class Hooks {
 		$agent = $contLang->truncateForDatabase( $agent, self::TEXT_FIELD_LENGTH );
 		$xff = $contLang->truncateForDatabase( $xff, self::TEXT_FIELD_LENGTH );
 
-		$dbw = $services->getDBLoadBalancer()->getConnectionRef( DB_MASTER );
+		$dbw = $services->getDBLoadBalancer()->getConnectionRef( DB_PRIMARY );
 
 		$rcRow = [
 			'cuc_page_id'    => 0,
@@ -439,7 +440,7 @@ class Hooks {
 		$agent = $contLang->truncateForDatabase( $agent, self::TEXT_FIELD_LENGTH );
 		$xff = $contLang->truncateForDatabase( $xff, self::TEXT_FIELD_LENGTH );
 
-		$dbw = $services->getDBLoadBalancer()->getConnectionRef( DB_MASTER );
+		$dbw = $services->getDBLoadBalancer()->getConnectionRef( DB_PRIMARY );
 		$rcRow = [
 			'cuc_page_id'    => 0,
 			'cuc_namespace'  => NS_USER,
@@ -471,9 +472,9 @@ class Hooks {
 		}
 
 		DeferredUpdates::addUpdate( new AutoCommitUpdate(
-			wfGetDB( DB_MASTER ),
+			wfGetDB( DB_PRIMARY ),
 			__METHOD__,
-			function ( IDatabase $dbw, $fname ) {
+			static function ( IDatabase $dbw, $fname ) {
 				global $wgCUDMaxAge;
 
 				// per-wiki
@@ -605,6 +606,10 @@ class Hooks {
 			$updater->addExtensionUpdate(
 				[ 'addPgField', 'cu_changes', 'cuc_private', 'BYTEA' ]
 			);
+			$updater->addExtensionUpdate( [ 'dropFkey', 'cu_log', 'cul_user' ] );
+			$updater->addExtensionUpdate( [ 'dropFkey', 'cu_log', 'cul_target_id' ] );
+			$updater->addExtensionUpdate( [ 'dropFkey', 'cu_changes', 'cuc_user' ] );
+			$updater->addExtensionUpdate( [ 'dropFkey', 'cu_changes', 'cuc_page_id' ] );
 		}
 
 		if ( !$isCUInstalled ) {
@@ -625,17 +630,6 @@ class Hooks {
 		return $type === 'postgres'
 			? $file . '.pg.sql'
 			: $file . '.sql';
-	}
-
-	/**
-	 * Tell the parser test engine to create a stub cu_changes table,
-	 * or temporary pages won't save correctly during the test run.
-	 * @param array &$tables
-	 * @return bool
-	 */
-	public static function checkUserParserTestTables( &$tables ) {
-		$tables[] = 'cu_changes';
-		return true;
 	}
 
 	/**
@@ -686,7 +680,8 @@ class Hooks {
 	public static function doRetroactiveAutoblock( DatabaseBlock $block, array &$blockIds ) {
 		$dbr = wfGetDB( DB_REPLICA );
 
-		$user = User::newFromName( (string)$block->getTarget(), false );
+		$userFactory = MediaWikiServices::getInstance()->getUserFactory();
+		$user = $userFactory->newFromName( $block->getTargetName(), UserFactory::RIGOR_NONE );
 		if ( !$user->getId() ) {
 			// user in an IP?
 			return true;

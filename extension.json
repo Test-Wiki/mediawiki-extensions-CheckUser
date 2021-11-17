@@ -10,7 +10,7 @@
 	"license-name": "GPL-2.0-or-later",
 	"type": "specialpage",
 	"requires": {
-		"MediaWiki": ">= 1.36.0",
+		"MediaWiki": ">= 1.37.0",
 		"platform": {
 			"ext-openssl": "*"
 		}
@@ -98,7 +98,6 @@
 		"LocalUserCreated": "MediaWiki\\CheckUser\\Hooks::onLocalUserCreated",
 		"UserMergeAccountFields": "MediaWiki\\CheckUser\\Hooks::onUserMergeAccountFields",
 		"RenameUserSQL": "MediaWiki\\CheckUser\\Hooks::onRenameUserSQL",
-		"ParserTestTables": "MediaWiki\\CheckUser\\Hooks::checkUserParserTestTables",
 		"LoadExtensionSchemaUpdates": "MediaWiki\\CheckUser\\Hooks::onLoadExtensionSchemaUpdates",
 		"ContributionsToolLinks": "MediaWiki\\CheckUser\\Hooks::checkUserContributionsLinks",
 		"PerformRetroactiveAutoblock": "MediaWiki\\CheckUser\\Hooks::doRetroactiveAutoblock",
@@ -227,7 +226,9 @@
 			"class": "MediaWiki\\CheckUser\\Specials\\SpecialCheckUser",
 			"services": [
 				"LinkBatchFactory",
-				"BlockPermissionCheckerFactory"
+				"BlockPermissionCheckerFactory",
+				"UserGroupManager",
+				"CentralIdLookupFactory"
 			]
 		},
 		"CheckUserLog": {

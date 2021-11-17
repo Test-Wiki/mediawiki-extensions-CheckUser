@@ -46,7 +46,7 @@ class CompareService extends ChangeService {
 	public function getTotalEditsFromIp(
 		string $ipHex,
 		string $excludeUser = null
-	) : int {
+	): int {
 		$db = $this->loadBalancer->getConnectionRef( DB_REPLICA );
 		$conds = [
 			'cuc_ip_hex' => $ipHex,
@@ -110,7 +110,9 @@ class CompareService extends ChangeService {
 			],
 			'options' => [
 				'GROUP BY' => [
+					'cuc_user',
 					'cuc_user_text',
+					'cuc_ip',
 					'cuc_ip_hex',
 					'cuc_agent',
 				],
@@ -140,7 +142,7 @@ class CompareService extends ChangeService {
 		string $start,
 		int $limitPerTarget,
 		$limitCheck = false
-	) : ?array {
+	): ?array {
 		if ( $limitCheck ) {
 			$orderBy = null;
 			$offset = $limitPerTarget;
@@ -196,7 +198,7 @@ class CompareService extends ChangeService {
 		array $targets,
 		array $excludeTargets,
 		string $start
-	) : array {
+	): array {
 		if ( $targets === [] ) {
 			return $targets;
 		}
