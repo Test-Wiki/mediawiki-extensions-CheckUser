@@ -2,25 +2,56 @@
 
 namespace MediaWiki\CheckUser\Api;
 
-use ApiBase;
+use ApiQuery;
 use ApiQueryBase;
+use ApiResult;
 use Exception;
-use MediaWiki\CheckUser\Specials\SpecialCheckUser;
+use MediaWiki\CheckUser\CheckUser\Pagers\AbstractCheckUserPager;
+use MediaWiki\CheckUser\CheckUserLogService;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\RevisionLookup;
 use MediaWiki\Revision\RevisionRecord;
-use User;
+use MediaWiki\User\UserIdentityLookup;
 use Wikimedia\IPUtils;
+use Wikimedia\ParamValidator\ParamValidator;
+use Wikimedia\ParamValidator\TypeDef\IntegerDef;
 
 /**
  * CheckUser API Query Module
  */
 class ApiQueryCheckUser extends ApiQueryBase {
-	public function __construct( $query, $moduleName ) {
+
+	/** @var UserIdentityLookup */
+	private $userIdentityLookup;
+
+	/** @var RevisionLookup */
+	private $revisionLookup;
+
+	/** @var CheckUserLogService */
+	private $checkUserLogService;
+
+	/**
+	 * @param ApiQuery $query
+	 * @param string $moduleName
+	 * @param UserIdentityLookup $userIdentityLookup
+	 * @param RevisionLookup $revisionLookup
+	 * @param CheckUserLogService $checkUserLogService
+	 */
+	public function __construct(
+		$query,
+		$moduleName,
+		UserIdentityLookup $userIdentityLookup,
+		RevisionLookup $revisionLookup,
+		CheckUserLogService $checkUserLogService
+	) {
 		parent::__construct( $query, $moduleName, 'cu' );
+		$this->userIdentityLookup = $userIdentityLookup;
+		$this->revisionLookup = $revisionLookup;
+		$this->checkUserLogService = $checkUserLogService;
 	}
 
 	public function execute() {
-		$db = $this->getDB();
+		$dbr = $this->getDB();
 
 		[
 			'request' => $request,
@@ -40,19 +71,21 @@ class ApiQueryCheckUser extends ApiQueryBase {
 		$reason = $this->msg( 'checkuser-reason-api', $reason )->inContentLanguage()->text();
 		// absolute time
 		$timeCutoff = strtotime( $timecond );
-		if ( !$timeCutoff ) {
+		if ( !$timeCutoff || $timeCutoff < 0 || $timeCutoff > time() ) {
 			$this->dieWithError( 'apierror-checkuser-timelimit', 'invalidtime' );
 		}
 
 		$this->addTables( 'cu_changes' );
 		$this->addOption( 'LIMIT', $limit + 1 );
 		$this->addOption( 'ORDER BY', 'cuc_timestamp DESC' );
-		$this->addWhere( "cuc_timestamp > " . $db->addQuotes( $db->timestamp( $timeCutoff ) ) );
+		$this->addWhere( "cuc_timestamp > " . $dbr->addQuotes( $dbr->timestamp( $timeCutoff ) ) );
 
 		switch ( $request ) {
 			case 'userips':
-				$user_id = User::idFromName( $target );
-				if ( !$user_id ) {
+				$userIdentity = $this->userIdentityLookup->getUserIdentityByName( $target );
+				if ( $userIdentity && $userIdentity->getId() ) {
+					$user_id = $userIdentity->getId();
+				} else {
 					$this->dieWithError(
 						[ 'nosuchusershort', wfEscapeWikiText( $target ) ], 'nosuchuser'
 					);
@@ -85,7 +118,8 @@ class ApiQueryCheckUser extends ApiQueryBase {
 					$resultIPs[] = $data;
 				}
 
-				SpecialCheckUser::addLogEntry( 'userips', 'user', $target, $reason, $user_id );
+				$this->checkUserLogService->addLogEntry( $this->getUser(), 'userips',
+					'user', $target, $reason, $user_id );
 				$result->addValue( [
 					'query', $this->getModuleName() ], 'userips', $resultIPs );
 				$result->addIndexedTagName( [
@@ -94,7 +128,7 @@ class ApiQueryCheckUser extends ApiQueryBase {
 
 			case 'edits':
 				if ( IPUtils::isIPAddress( $target ) ) {
-					$cond = SpecialCheckUser::getIpConds( $db, $target, isset( $xff ) );
+					$cond = AbstractCheckUserPager::getIpConds( $dbr, $target, isset( $xff ) );
 					if ( !$cond ) {
 						$this->dieWithError( 'apierror-badip', 'invalidip' );
 					}
@@ -107,8 +141,10 @@ class ApiQueryCheckUser extends ApiQueryBase {
 					}
 					$log_type[] = 'ip';
 				} else {
-					$user_id = User::idFromName( $target );
-					if ( $user_id === null ) {
+					$userIdentity = $this->userIdentityLookup->getUserIdentityByName( $target );
+					if ( $userIdentity && $userIdentity->getId() ) {
+						$user_id = $userIdentity->getId();
+					} else {
 						$this->dieWithError(
 							[ 'nosuchusershort', wfEscapeWikiText( $target ) ], 'nosuchuser'
 						);
@@ -143,22 +179,19 @@ class ApiQueryCheckUser extends ApiQueryBase {
 						if ( $row->cuc_this_oldid != 0 &&
 							( $row->cuc_type == RC_EDIT || $row->cuc_type == RC_NEW )
 						) {
-							$revRecord = MediaWikiServices::getInstance()
-								->getRevisionLookup()
+							$revRecord = $this->revisionLookup
 								->getRevisionById( $row->cuc_this_oldid );
 							if ( !$revRecord ) {
-								$dbr = wfGetDB( DB_REPLICA );
 								$queryInfo = MediaWikiServices::getInstance()
 									->getRevisionStore()
 									->getArchiveQueryInfo();
-								$tmp = $dbr->selectRow(
-									$queryInfo['tables'],
-									$queryInfo['fields'],
-									[ 'ar_rev_id' => $row->cuc_this_oldid ],
-									__METHOD__,
-									[],
-									$queryInfo['joins']
-								);
+								$tmp = $dbr->newSelectQueryBuilder()
+									->fields( $queryInfo['fields'] )
+									->tables( $queryInfo['tables'] )
+									->joinConds( $queryInfo['joins'] )
+									->where( [ 'ar_rev_id' => $row->cuc_this_oldid ] )
+									->caller( __METHOD__ )
+									->fetchRow();
 								if ( $tmp ) {
 									$revRecord = MediaWikiServices::getInstance()
 										->getRevisionFactory()
@@ -191,7 +224,7 @@ class ApiQueryCheckUser extends ApiQueryBase {
 					$edits[] = $edit;
 				}
 
-				SpecialCheckUser::addLogEntry( $log_type[0], $log_type[1],
+				$this->checkUserLogService->addLogEntry( $this->getUser(), $log_type[0], $log_type[1],
 					$target, $reason, $user_id ?? '0' );
 				$result->addValue( [
 					'query', $this->getModuleName() ], 'edits', $edits );
@@ -201,7 +234,7 @@ class ApiQueryCheckUser extends ApiQueryBase {
 
 			case 'ipusers':
 				if ( IPUtils::isIPAddress( $target ) ) {
-					$cond = SpecialCheckUser::getIpConds( $db, $target, isset( $xff ) );
+					$cond = AbstractCheckUserPager::getIpConds( $dbr, $target, isset( $xff ) );
 					$this->addWhere( $cond );
 					$log_type = 'ipusers';
 					if ( isset( $xff ) ) {
@@ -245,13 +278,14 @@ class ApiQueryCheckUser extends ApiQueryBase {
 				$resultUsers = [];
 				foreach ( $users as $userName => $userData ) {
 					$userData['name'] = $userName;
-					$result->setIndexedTagName( $userData['ips'], 'ip' );
-					$result->setIndexedTagName( $userData['agents'], 'agent' );
+					ApiResult::setIndexedTagName( $userData['ips'], 'ip' );
+					ApiResult::setIndexedTagName( $userData['agents'], 'agent' );
 
 					$resultUsers[] = $userData;
 				}
 
-				SpecialCheckUser::addLogEntry( $log_type, 'ip', $target, $reason );
+				$this->checkUserLogService->addLogEntry( $this->getUser(), $log_type,
+					'ip', $target, $reason );
 				$result->addValue( [
 					'query', $this->getModuleName() ], 'ipusers', $resultUsers );
 				$result->addIndexedTagName( [
@@ -263,37 +297,40 @@ class ApiQueryCheckUser extends ApiQueryBase {
 		}
 	}
 
+	/** @inheritDoc */
 	public function mustBePosted() {
 		return true;
 	}
 
+	/** @inheritDoc */
 	public function isWriteMode() {
 		return true;
 	}
 
+	/** @inheritDoc */
 	public function getAllowedParams() {
 		return [
 			'request'  => [
-				ApiBase::PARAM_REQUIRED => true,
-				ApiBase::PARAM_TYPE => [
+				ParamValidator::PARAM_REQUIRED => true,
+				ParamValidator::PARAM_TYPE => [
 					'userips',
 					'edits',
 					'ipusers',
 				]
 			],
 			'target'   => [
-				ApiBase::PARAM_REQUIRED => true,
+				ParamValidator::PARAM_REQUIRED => true,
 			],
 			'reason'   => null,
 			'limit'    => [
-				ApiBase::PARAM_DFLT => 500,
-				ApiBase::PARAM_TYPE => 'limit',
-				ApiBase::PARAM_MIN  => 1,
-				ApiBase::PARAM_MAX  => 500,
-				ApiBase::PARAM_MAX2 => $this->getConfig()->get( 'CheckUserMaximumRowCount' ),
+				ParamValidator::PARAM_DEFAULT => 500,
+				ParamValidator::PARAM_TYPE => 'limit',
+				IntegerDef::PARAM_MIN  => 1,
+				IntegerDef::PARAM_MAX  => 500,
+				IntegerDef::PARAM_MAX2 => $this->getConfig()->get( 'CheckUserMaximumRowCount' ),
 			],
 			'timecond' => [
-				ApiBase::PARAM_DFLT => '-2 weeks'
+				ParamValidator::PARAM_DEFAULT => '-2 weeks'
 			],
 			'xff'      => null,
 		];
@@ -312,10 +349,12 @@ class ApiQueryCheckUser extends ApiQueryBase {
 		];
 	}
 
+	/** @inheritDoc */
 	public function getHelpUrls() {
 		return 'https://www.mediawiki.org/wiki/Special:MyLanguage/Extension:CheckUser#API';
 	}
 
+	/** @inheritDoc */
 	public function needsToken() {
 		return 'csrf';
 	}

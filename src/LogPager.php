@@ -2,14 +2,17 @@
 
 namespace MediaWiki\CheckUser;
 
+use CommentStore;
 use Html;
 use IContextSource;
 use Linker;
 use MediaWiki\Cache\LinkBatchFactory;
-use ReverseChronologicalPager;
+use MediaWiki\CheckUser\CheckUser\SpecialCheckUserLog;
+use RangeChronologicalPager;
+use SpecialPage;
 use Wikimedia\Rdbms\IResultWrapper;
 
-class LogPager extends ReverseChronologicalPager {
+class LogPager extends RangeChronologicalPager {
 	/**
 	 * @var array
 	 */
@@ -18,21 +21,125 @@ class LogPager extends ReverseChronologicalPager {
 	/** @var LinkBatchFactory */
 	private $linkBatchFactory;
 
+	/** @var CommentStore */
+	private $commentStore;
+
+	/**
+	 * @var array
+	 */
+	private $opts;
+
 	/**
 	 * @param IContextSource $context
-	 * @param array $conds Should include 'queryConds', 'year', and 'month' keys
+	 * @param array $opts A array of keys that can include 'target', 'initiator', 'start', 'end'
+	 * 		'year' and 'month'. Target should be a user, IP address or IP range. Initiator should be a user.
+	 * 		Start and end should be timestamps. Year and month are converted to end but ignored if end is
+	 * 		provided.
 	 * @param LinkBatchFactory $linkBatchFactory
+	 * @param CommentStore $commentStore
 	 */
-	public function __construct( IContextSource $context, array $conds, LinkBatchFactory $linkBatchFactory ) {
+	public function __construct(
+		IContextSource $context,
+		array $opts,
+		LinkBatchFactory $linkBatchFactory,
+		CommentStore $commentStore
+	) {
 		parent::__construct( $context );
-		$this->searchConds = $conds['queryConds'];
-		// getDateCond() actually *sets* the timestamp offset..
-		$this->getDateCond( $conds['year'], $conds['month'] );
+		// Default to all log entries - we'll add conditions below if a target was provided
+		$targetSearchConds = [];
+		$initiatorSearchConds = [];
+
+		if ( $opts['target'] !== '' ) {
+			$targetSearchConds = $this->getTargetSearchConds( $opts['target'] );
+		}
+
+		if ( $opts['initiator'] !== '' ) {
+			$initiatorSearchConds = $this->getPerformerSearchConds( $opts['initiator'] );
+		}
+
+		if ( $targetSearchConds === null || $initiatorSearchConds === null ) {
+			throw new \Exception( 'An invalid initiator or target was provided.' );
+		}
+
+		$this->searchConds = array_merge( $targetSearchConds, $initiatorSearchConds );
+
+		// Date filtering: use timestamp if available - From SpecialContributions.php
+		$startTimestamp = '';
+		$endTimestamp = '';
+		if ( isset( $opts['start'] ) && $opts['start'] ) {
+			$startTimestamp = $opts['start'] . ' 00:00:00';
+		}
+		if ( isset( $opts['end'] ) && $opts['end'] ) {
+			$endTimestamp = $opts['end'] . ' 23:59:59';
+		}
+		$this->getDateRangeCond( $startTimestamp, $endTimestamp );
 		$this->linkBatchFactory = $linkBatchFactory;
+		$this->commentStore = $commentStore;
+		$this->opts = $opts;
 	}
 
+	/**
+	 * If appropriate, generate a link that wraps around the provided date, time, or
+	 * date and time. The date and time is escaped by this function.
+	 *
+	 * @param string $dateAndTime The string representation of the date, time or date and time.
+	 * @param array|\stdClass $row The current row being formatted in formatRow().
+	 * @return string|null The date and time wrapped in a link if appropriate.
+	 */
+	protected function generateTimestampLink( string $dateAndTime, $row ) {
+		$highlight = $this->getRequest()->getVal( 'highlight' );
+		// Add appropriate classes to the date and time.
+		$dateAndTimeClasses = [];
+		if (
+			$highlight === strval( $row->cul_timestamp )
+		) {
+			$dateAndTimeClasses[] = 'mw-checkuser-log-highlight-entry';
+		}
+		// If the CU log search has a specified target or initiator then
+		// provide a link to this log entry without the current filtering
+		// for these values.
+		if (
+			$this->opts['target'] ||
+			$this->opts['initiator']
+		) {
+			return $this->getLinkRenderer()->makeLink(
+				SpecialPage::getTitleFor( 'CheckUserLog' ),
+				$dateAndTime,
+				[
+					'class' => $dateAndTimeClasses,
+				],
+				[
+					'offset' => $row->cul_timestamp + 3600,
+					'highlight' => $row->cul_timestamp,
+				]
+			);
+		} elseif ( $dateAndTimeClasses ) {
+			return Html::element(
+				'span',
+				[ 'class' => $dateAndTimeClasses ],
+				$dateAndTime
+			);
+		} else {
+			return htmlspecialchars( $dateAndTime );
+		}
+	}
+
+	/**
+	 * @inheritDoc
+	 */
 	public function formatRow( $row ) {
-		$user = Linker::userLink( $row->cul_user, $row->user_name );
+		$user = Linker::userLink( $row->cul_user, $row->user_name ) .
+			$this->msg( 'word-separator' )->escaped()
+			. Html::rawElement( 'span', [ 'classes' => 'mw-usertoollinks' ],
+				$this->msg( 'parentheses' )->params( $this->getLinkRenderer()->makeLink(
+					SpecialPage::getTitleFor( 'CheckUserLog' ),
+					$this->msg( 'checkuser-log-checks-by' )->text(),
+					[],
+					[
+						'cuInitiator' => $row->user_name,
+					]
+				) )->text()
+			);
 
 		$target = Linker::userLink( $row->cul_target_id, $row->cul_target_text ) .
 			Linker::userToolLinks( $row->cul_target_id, trim( $row->cul_target_text ) );
@@ -47,14 +154,19 @@ class LogPager extends ReverseChronologicalPager {
 			'checkuser-log-entry-' . $row->cul_type,
 			$user,
 			$target,
-			htmlspecialchars(
-				$lang->userTimeAndDate( wfTimestamp( TS_MW, $row->cul_timestamp ), $contextUser )
+			$this->generateTimestampLink(
+				$lang->userTimeAndDate(
+					wfTimestamp( TS_MW, $row->cul_timestamp ), $contextUser
+				),
+				$row
 			),
-			htmlspecialchars(
-				$lang->userDate( wfTimestamp( TS_MW, $row->cul_timestamp ), $contextUser )
+			$this->generateTimestampLink(
+				$lang->userDate( wfTimestamp( TS_MW, $row->cul_timestamp ), $contextUser ),
+				$row
 			),
-			htmlspecialchars(
-				$lang->userTime( wfTimestamp( TS_MW, $row->cul_timestamp ), $contextUser )
+			$this->generateTimestampLink(
+				$lang->userTime( wfTimestamp( TS_MW, $row->cul_timestamp ), $contextUser ),
+				$row
 			)
 		)->text();
 		$rowContent .= Linker::commentBlock( $row->cul_reason );
@@ -71,9 +183,9 @@ class LogPager extends ReverseChronologicalPager {
 	public function getStartBody() {
 		if ( $this->getNumRows() ) {
 			return '<ul>';
-		} else {
-			return '';
 		}
+
+		return '';
 	}
 
 	/**
@@ -82,9 +194,9 @@ class LogPager extends ReverseChronologicalPager {
 	public function getEndBody() {
 		if ( $this->getNumRows() ) {
 			return '</ul>';
-		} else {
-			return '';
 		}
+
+		return '';
 	}
 
 	/**
@@ -94,6 +206,9 @@ class LogPager extends ReverseChronologicalPager {
 		return '<p>' . $this->msg( 'checkuser-empty' )->escaped() . '</p>';
 	}
 
+	/**
+	 * @inheritDoc
+	 */
 	public function getQueryInfo() {
 		return [
 			'tables' => [ 'cu_log', 'user' ],
@@ -102,10 +217,16 @@ class LogPager extends ReverseChronologicalPager {
 		];
 	}
 
+	/**
+	 * @inheritDoc
+	 */
 	public function getIndexField() {
 		return 'cul_timestamp';
 	}
 
+	/**
+	 * @inheritDoc
+	 */
 	public function selectFields() {
 		return [
 			'cul_id', 'cul_timestamp', 'cul_user', 'cul_reason', 'cul_type',
@@ -136,5 +257,53 @@ class LogPager extends ReverseChronologicalPager {
 		}
 		$lb->execute();
 		$result->seek( 0 );
+	}
+
+	/**
+	 * Get DB search conditions for the initiator
+	 *
+	 * @param string $initiator the username of the initiator.
+	 * @return array|null array if valid target, null if invalid
+	 */
+	public static function getPerformerSearchConds( string $initiator ) {
+		$initiatorObject = SpecialCheckUserLog::verifyInitiator( $initiator );
+		if ( $initiatorObject !== false ) {
+			return [ 'cul_user' => $initiatorObject ];
+		}
+		return null;
+	}
+
+	/**
+	 * Get DB search conditions according to the CU target given.
+	 *
+	 * @param string $target the username, IP address or range of the target.
+	 * @return array|null array if valid target, null if invalid target given
+	 */
+	public static function getTargetSearchConds( string $target ) {
+		$dbr = wfGetDB( DB_REPLICA );
+		$result = SpecialCheckUserLog::verifyTarget( $target );
+		if ( is_array( $result ) ) {
+			switch ( count( $result ) ) {
+				case 1:
+					return [
+						'cul_target_hex = ' . $dbr->addQuotes( $result[0] ) . ' OR ' .
+						'(cul_range_end >= ' . $dbr->addQuotes( $result[0] ) . ' AND ' .
+						'cul_range_start <= ' . $dbr->addQuotes( $result[0] ) . ')'
+					];
+				case 2:
+					return [
+						'(cul_target_hex >= ' . $dbr->addQuotes( $result[0] ) . ' AND ' .
+						'cul_target_hex <= ' . $dbr->addQuotes( $result[1] ) . ') OR ' .
+						'(cul_range_end >= ' . $dbr->addQuotes( $result[0] ) . ' AND ' .
+						'cul_range_start <= ' . $dbr->addQuotes( $result[1] ) . ')'
+					];
+			}
+		} elseif ( is_int( $result ) ) {
+			return [
+				'cul_type' => [ 'userips', 'useredits', 'investigate' ],
+				'cul_target_id' => $result,
+			];
+		}
+		return null;
 	}
 }

@@ -6,7 +6,7 @@
 			"Soued031"
 		]
 	},
-	"checkuser-summary": "Dës Funktioun scannt déi rezent Ännerunge fir d'Ip-Adressen, déi vun engem Benotzer benotzt goufen, ze fannen, repektiv d'Ännerunge pro Benotzer fir eng IP.\nBenotzer an Ännerunge vun enger IP-Adress kënnen och iwwer den XFF header gesicht ginn andeems hanner d'IP-Adress \"/xff\" hannendrugehaange gëtt. IPv4 (CIDR $1-32) an IPv6 (CIDR $2-128) ginn ënnerstëtzt.\nNet méi wéi 5000 Ännerunge ginn aus Performancegrënn zréckgeschéckt.\nBenotzt dës Funktioun am Aklang mat den Direktiven.",
+	"checkuser-summary": "Dës Funktioun scannt déi rezent Ännerunge fir d'IP-Adressen, déi vun engem Benotzer benotzt goufen, ze fannen, respektiv d'Ännerunge pro Benotzer fir eng IP.\nBenotzer an Ännerunge vun enger IP-Adress kënnen och iwwer den XFF header gesicht ginn andeems hanner d'IP-Adress \"/xff\" hannendrugehaange gëtt. IPv4 (CIDR $1-32) an IPv6 (CIDR $2-128) ginn ënnerstëtzt.\nNet méi wéi $3 Ännerunge ginn aus Performancegrënn zréckgeschéckt.\nBenotzt dës Funktioun am Aklang mat den Direktiven.",
 	"checkuser-desc": "Gëtt Benotzer mat den néidege Rechter d'Méiglechkeet d'IP-Adresse sou wéi aner Informatiounen iwwer d'Benotzer z'iwwerpréiwen",
 	"checkuser": "Benotzer-Check",
 	"checkuserlog": "Lëscht vun de Benotzerkontrollen",
@@ -81,7 +81,7 @@
 	"checkuser-autocreate-action": "gouf automatesch ugeluecht",
 	"checkuser-create-action": "gouf ugeluecht",
 	"checkuser-email-action": "dem Benotzer \"$1\" eng E-Mail geschéckt",
-	"checkuser-reset-action": "huet d'Passwuert fir de Benotzer \"$1\" zréckgesat",
+	"checkuser-reset-action": "setzt d'Passwuert fir de Benotzer \"$1\" zréck",
 	"checkuser-token-fail": "Sessiouns-Feeler.Probéiert wgl. nach eng Kéier.",
 	"checkuser-login-failure": "Konnt sech net alogge op {{SITENAME}} als $1",
 	"checkuser-login-success": "Op {{SITENAME}} ageloggt als $1",
@@ -109,7 +109,7 @@
 	"checkuser-investigate-tab-preliminary-check": "Benotzerkontinformatioun",
 	"checkuser-investigate-tab-compare": "IP-Adressen a User Agents",
 	"checkuser-investigate-tab-timeline": "Chronologie",
-	"checkuser-investigate-targets-label": "Benotzernimm oder IP-Adressen",
+	"checkuser-investigate-targets-label": "Benotzernimm an IP-Adressen:",
 	"checkuser-investigate-targets-placeholder": "Benotzernumm oder 1.1.1.1",
 	"checkuser-investigate-duration-label": "Dauer",
 	"checkuser-investigate-duration-option-all": "All",

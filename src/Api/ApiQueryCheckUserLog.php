@@ -3,19 +3,28 @@
 namespace MediaWiki\CheckUser\Api;
 
 use ApiBase;
+use ApiQuery;
 use ApiQueryBase;
+use MediaWiki\CheckUser\LogPager;
+use Wikimedia\IPUtils;
+use Wikimedia\ParamValidator\ParamValidator;
+use Wikimedia\ParamValidator\TypeDef\IntegerDef;
 
 /**
  * CheckUser API Query Module
  */
 class ApiQueryCheckUserLog extends ApiQueryBase {
+	/**
+	 * @param ApiQuery $query
+	 * @param string $moduleName
+	 */
 	public function __construct( $query, $moduleName ) {
 		parent::__construct( $query, $moduleName, 'cul' );
 	}
 
 	public function execute() {
+		$db = $this->getDB();
 		$params = $this->extractRequestParams();
-
 		$this->checkUserRightsAny( 'checkuser-log' );
 
 		$limit = $params['limit'];
@@ -26,7 +35,8 @@ class ApiQueryCheckUserLog extends ApiQueryBase {
 		$this->addOption( 'LIMIT', $limit + 1 );
 		$this->addTimestampWhereRange( 'cul_timestamp', $dir, $params['from'], $params['to'] );
 		$this->addFields( [
-			'cul_id', 'cul_timestamp', 'cul_user_text', 'cul_reason', 'cul_type', 'cul_target_text' ] );
+			'cul_id', 'cul_timestamp', 'cul_user_text', 'cul_reason', 'cul_type', 'cul_target_text'
+		] );
 
 		// Order by both timestamp and id
 		$order = ( $dir === 'newer' ? '' : ' DESC' );
@@ -36,7 +46,15 @@ class ApiQueryCheckUserLog extends ApiQueryBase {
 			$this->addWhereFld( 'cul_user_text', $params['user'] );
 		}
 		if ( isset( $params['target'] ) ) {
-			$this->addWhereFld( 'cul_target_text', $params['target'] );
+			if ( IPUtils::isIPAddress( $params['target'] ) ) {
+				$cond = LogPager::getTargetSearchConds( $params['target'] );
+				if ( !$cond ) {
+					$this->dieWithError( 'apierror-badip', 'invalidip' );
+				}
+				$this->addWhere( $cond );
+			} else {
+				$this->addWhereFld( 'cul_target_text', $params['target'] );
+			}
 		}
 
 		if ( $continue !== null ) {
@@ -45,7 +63,6 @@ class ApiQueryCheckUserLog extends ApiQueryBase {
 			$this->dieContinueUsageIf( count( $cont ) !== 2 );
 			$this->dieContinueUsageIf( wfTimestamp( TS_UNIX, $cont[0] ) === false );
 
-			$db = $this->getDB();
 			$timestamp = $db->addQuotes( $db->timestamp( $cont[0] ) );
 			$id = intval( $cont[1] );
 			$this->dieContinueUsageIf( $cont[1] !== (string)$id );
@@ -86,30 +103,31 @@ class ApiQueryCheckUserLog extends ApiQueryBase {
 		$result->addIndexedTagName( [ 'query', $this->getModuleName(), 'entries' ], 'entry' );
 	}
 
+	/** @inheritDoc */
 	public function getAllowedParams() {
 		return [
 			'user'   => null,
 			'target' => null,
 			'limit'  => [
-				ApiBase::PARAM_DFLT => 10,
-				ApiBase::PARAM_TYPE => 'limit',
-				ApiBase::PARAM_MIN  => 1,
-				ApiBase::PARAM_MAX  => ApiBase::LIMIT_BIG1,
-				ApiBase::PARAM_MAX2 => ApiBase::LIMIT_BIG2,
+				ParamValidator::PARAM_DEFAULT => 10,
+				ParamValidator::PARAM_TYPE => 'limit',
+				IntegerDef::PARAM_MIN  => 1,
+				IntegerDef::PARAM_MAX  => ApiBase::LIMIT_BIG1,
+				IntegerDef::PARAM_MAX2 => ApiBase::LIMIT_BIG2,
 			],
 			'dir' => [
-				ApiBase::PARAM_DFLT => 'older',
-				ApiBase::PARAM_TYPE => [
+				ParamValidator::PARAM_DEFAULT => 'older',
+				ParamValidator::PARAM_TYPE => [
 					'newer',
 					'older'
 				],
-				ApiBase::PARAM_HELP_MSG => 'api-help-param-direction',
+				ApiBase::PARAM_HELP_MSG => 'checkuser-api-help-param-direction',
 			],
 			'from'  => [
-				ApiBase::PARAM_TYPE => 'timestamp',
+				ParamValidator::PARAM_TYPE => 'timestamp',
 			],
 			'to'    => [
-				ApiBase::PARAM_TYPE => 'timestamp',
+				ParamValidator::PARAM_TYPE => 'timestamp',
 			],
 			'continue' => [
 				ApiBase::PARAM_HELP_MSG => 'api-help-param-continue',
@@ -130,6 +148,9 @@ class ApiQueryCheckUserLog extends ApiQueryBase {
 		];
 	}
 
+	/**
+	 * @inheritDoc
+	 */
 	public function getHelpUrls() {
 		return 'https://www.mediawiki.org/wiki/Special:MyLanguage/Extension:CheckUser#API';
 	}

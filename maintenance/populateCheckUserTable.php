@@ -1,5 +1,6 @@
 <?php
 
+use MediaWiki\CheckUser\Hooks;
 use MediaWiki\MediaWikiServices;
 use Wikimedia\IPUtils;
 
@@ -25,15 +26,24 @@ class PopulateCheckUserTable extends LoggedUpdateMaintenance {
 		$this->requireExtension( 'CheckUser' );
 	}
 
+	/**
+	 * @inheritDoc
+	 */
 	protected function getUpdateKey() {
 		return __CLASS__;
 	}
 
+	/**
+	 * @inheritDoc
+	 */
 	protected function doDBUpdates() {
 		$db = $this->getDB( DB_PRIMARY );
 
 		// Check if the table is empty
-		$rcRows = $db->selectField( 'recentchanges', 'COUNT(*)', [], __METHOD__ );
+		$rcRows = $db->newSelectQueryBuilder()
+			->table( 'recentchanges' )
+			->caller( __METHOD__ )
+			->fetchRowCount();
 		if ( !$rcRows ) {
 			$this->output( "recentchanges is empty; nothing to add.\n" );
 			return true;
@@ -54,42 +64,55 @@ class PopulateCheckUserTable extends LoggedUpdateMaintenance {
 			$cutoffCond = "";
 		}
 
-		$start = (int)$db->selectField( 'recentchanges', 'MIN(rc_id)', [], __METHOD__ );
-		$end = (int)$db->selectField( 'recentchanges', 'MAX(rc_id)', [], __METHOD__ );
+		$start = (int)$db->newSelectQueryBuilder()
+			->field( 'MIN(rc_id)' )
+			->table( 'recentchanges' )
+			->caller( __METHOD__ )
+			->fetchField();
+		$end = (int)$db->newSelectQueryBuilder()
+			->field( 'MAX(rc_id)' )
+			->table( 'recentchanges' )
+			->caller( __METHOD__ )
+			->fetchField();
 		// Do remaining chunk
 		$end += $this->mBatchSize - 1;
 		$blockStart = $start;
 		$blockEnd = $start + $this->mBatchSize - 1;
 
 		$this->output(
-			"Starting poulation of cu_changes with recentchanges rc_id from $start to $end\n"
+			"Starting population of cu_changes with recentchanges rc_id from $start to $end\n"
 		);
 
-		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
+		$services = MediaWikiServices::getInstance();
+		$lbFactory = $services->getDBLoadBalancerFactory();
 
-		$commentStore = CommentStore::getStore();
+		$actorMigrationStage = $services->getMainConfig()->get( 'CheckUserActorMigrationStage' );
+
+		$commentStore = $services->getCommentStore();
 		$rcQuery = RecentChange::getQueryInfo();
+		$contLang = $services->getContentLanguage();
 
 		while ( $blockStart <= $end ) {
 			$this->output( "...migrating rc_id from $blockStart to $blockEnd\n" );
 			$cond = "rc_id BETWEEN $blockStart AND $blockEnd $cutoffCond";
-			$res = $db->select(
-				$rcQuery['tables'],
-				$rcQuery['fields'],
-				$cond,
-				__METHOD__,
-				[],
-				$rcQuery['joins']
-			);
+			$res = $db->newSelectQueryBuilder()
+				->fields( $rcQuery['fields'] )
+				->tables( $rcQuery['tables'] )
+				->joinConds( $rcQuery['joins'] )
+				->conds( $cond )
+				->caller( __METHOD__ )
+				->fetchResultSet();
 			$batch = [];
 			foreach ( $res as $row ) {
-				$batch[] = [
+				$entry = [
 					'cuc_timestamp' => $row->rc_timestamp,
 					'cuc_user' => $row->rc_user ?? 0,
 					'cuc_user_text' => $row->rc_user_text,
 					'cuc_namespace' => $row->rc_namespace,
 					'cuc_title' => $row->rc_title,
-					'cuc_comment' => $commentStore->getComment( 'rc_comment', $row )->text,
+					'cuc_comment' => $contLang->truncateForDatabase(
+						$commentStore->getComment( 'rc_comment', $row )->text, Hooks::TEXT_FIELD_LENGTH
+					),
 					'cuc_minor' => $row->rc_minor,
 					'cuc_page_id' => $row->rc_cur_id,
 					'cuc_this_oldid' => $row->rc_this_oldid,
@@ -98,6 +121,12 @@ class PopulateCheckUserTable extends LoggedUpdateMaintenance {
 					'cuc_ip' => $row->rc_ip,
 					'cuc_ip_hex' => IPUtils::toHex( $row->rc_ip ),
 				];
+
+				if ( $actorMigrationStage & SCHEMA_COMPAT_WRITE_NEW ) {
+					$entry['cuc_actor'] = $row->rc_actor;
+				}
+
+				$batch[] = $entry;
 			}
 			if ( count( $batch ) ) {
 				$db->insert( 'cu_changes', $batch, __METHOD__ );
