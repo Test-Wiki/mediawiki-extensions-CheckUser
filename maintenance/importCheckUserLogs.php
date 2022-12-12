@@ -1,5 +1,6 @@
 <?php
 
+use MediaWiki\MediaWikiServices;
 use Wikimedia\IPUtils;
 
 $IP = getenv( 'MW_INSTALL_PATH' );
@@ -43,6 +44,11 @@ class ImportCheckUserLogs extends Maintenance {
 		fclose( $file );
 	}
 
+	/**
+	 * @param string $line
+	 *
+	 * @return array|null
+	 */
 	protected function parseLogLine( $line ) {
 		$rxTimestamp = '(?P<timestamp>\d+:\d+, \d+ \w+ \d+)';
 		$rxUser = '(?P<user>.*?)';
@@ -84,13 +90,21 @@ class ImportCheckUserLogs extends Maintenance {
 		return null;
 	}
 
+	/**
+	 * @param resource $file
+	 */
 	protected function importLog( $file ) {
 		global $wgDBname;
 
 		$matched = 0;
 		$unmatched = 0;
 
-		while ( ( $line = fgets( $file ) ) !== false ) {
+		$services = MediaWikiServices::getInstance();
+		$userFactory = $services->getUserFactory();
+		$culActorMigrationStage = $services->getMainConfig()->get( 'CheckUserLogActorMigrationStage' );
+
+		while ( !feof( $file ) ) {
+			$line = fgets( $file );
 			$data = $this->parseLogLine( $line );
 			if ( $data ) {
 				if ( $data['wiki'] != WikiMap::getCurrentWikiId() && $data['wiki'] != $wgDBname ) {
@@ -99,11 +113,11 @@ class ImportCheckUserLogs extends Maintenance {
 				}
 
 				// Local wiki lookups...
-				$user = User::newFromName( $data['user'] );
+				$user = $userFactory->newFromName( $data['user'] );
 
 				list( $start, $end ) = IPUtils::parseRange( $data['target'] );
 				if ( $start === false ) {
-					$targetUser = User::newFromName( $data['target'] );
+					$targetUser = $userFactory->newFromName( $data['target'] );
 					$targetID = $targetUser ? $targetUser->getId() : 0;
 					$start = $end = $hex = '';
 				} else {
@@ -126,7 +140,12 @@ class ImportCheckUserLogs extends Maintenance {
 						'cul_target_text' => $data['target'],
 						'cul_target_hex' => $hex,
 						'cul_range_start' => $start,
-						'cul_range_end' => $end ];
+						'cul_range_end' => $end
+					];
+
+					if ( $culActorMigrationStage & SCHEMA_COMPAT_WRITE_NEW ) {
+						$fields['cul_actor'] = $user->getActorId();
+					}
 
 					$dbw->insert( 'cu_log', $fields, __METHOD__ );
 				}
@@ -141,12 +160,16 @@ class ImportCheckUserLogs extends Maintenance {
 		);
 	}
 
+	/**
+	 * @param resource $file
+	 */
 	protected function testLog( $file ) {
 		$matched = 0;
 		$unmatched = 0;
 		$badtime = 0;
 
-		while ( ( $line = fgets( $file ) ) !== false ) {
+		while ( !feof( $file ) ) {
+			$line = fgets( $file );
 			$data = $this->parseLogLine( $line );
 			if ( $data ) {
 				$matched++;

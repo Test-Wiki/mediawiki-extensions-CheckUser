@@ -1,5 +1,7 @@
 <?php
 
+use Wikimedia\Rdbms\SelectQueryBuilder;
+
 if ( getenv( 'MW_INSTALL_PATH' ) ) {
 	$IP = getenv( 'MW_INSTALL_PATH' );
 } else {
@@ -35,6 +37,13 @@ class PurgeOldData extends Maintenance {
 		$this->output( "Done.\n" );
 	}
 
+	/**
+	 * @param string $table
+	 * @param string $ts_column
+	 * @param int $maxAge
+	 *
+	 * @return int
+	 */
 	protected function prune( $table, $ts_column, $maxAge ) {
 		$dbw = $this->getDB( DB_PRIMARY );
 		$expiredCond = "$ts_column < " . $dbw->addQuotes( $dbw->timestamp( time() - $maxAge ) );
@@ -42,11 +51,14 @@ class PurgeOldData extends Maintenance {
 		$count = 0;
 		while ( true ) {
 			// Get the first $this->mBatchSize (or less) items
-			$res = $dbw->select( $table, $ts_column,
-				$expiredCond,
-				__METHOD__,
-				[ 'ORDER BY' => "$ts_column ASC", 'LIMIT' => $this->mBatchSize ]
-			);
+			$res = $dbw->newSelectQueryBuilder()
+				->field( $ts_column )
+				->table( $table )
+				->conds( $expiredCond )
+				->orderBy( $ts_column, SelectQueryBuilder::SORT_ASC )
+				->limit( $this->mBatchSize )
+				->caller( __METHOD__ )
+				->fetchResultSet();
 			if ( !$res->numRows() ) {
 				// all cleared
 				break;

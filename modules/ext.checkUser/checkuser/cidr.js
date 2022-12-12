@@ -1,8 +1,14 @@
 /* -- (c) Aaron Schulz 2009 */
 ( function () {
+	$( '#mw-checkuser-ipnote' ).css( 'font-weight', '600' );
 	var showResults = function ( size, cidr ) {
-		$( '#mw-checkuser-cidr-res' ).val( cidr );
-		$( '#mw-checkuser-ipnote' ).text( size );
+		if ( cidr.toString() === '!' ) {
+			cidr = mw.message( 'checkuser-cidr-too-small' ).text();
+		}
+		$( '#mw-checkuser-cidr-res input' ).val( cidr );
+		$( '#mw-checkuser-ipnote' ).text(
+			mw.message( 'checkuser-cidr-affected-ips' ).text() + ' ' + size.toLocaleString()
+		);
 	};
 
 	/**
@@ -15,11 +21,11 @@
 			return; // no JS form
 		}
 		form.style.display = 'inline'; // unhide form (JS active)
-		var iplist = document.getElementById( 'mw-checkuser-iplist' );
-		if ( !iplist ) {
+		var $iplist = $( '#mw-checkuser-iplist textarea' ).first();
+		if ( !$iplist ) {
 			return; // no JS form
 		}
-		var text = iplist.value, ips;
+		var text = $iplist.val(), ips;
 		// Each line should have one IP or range
 		if ( text.indexOf( '\n' ) !== -1 ) {
 			ips = text.split( '\n' );
@@ -97,7 +103,7 @@
 				prefixCidr = binPrefix.length;
 				// CIDR too small?
 				if ( prefixCidr < 16 ) {
-					showResults( '!', '>' + Math.pow( 2, 32 - prefixCidr ) );
+					showResults( '>' + Math.pow( 2, 32 - prefixCidr ).toLocaleString(), '!' );
 					return; // too big
 				}
 				// Build the IP in dotted-quad form
@@ -178,7 +184,7 @@
 				prefixCidr = binPrefix.length;
 				// CIDR too small?
 				if ( prefixCidr < 32 ) {
-					showResults( '!', '>' + Math.pow( 2, 128 - prefixCidr ) );
+					showResults( '>' + Math.pow( 2, 128 - prefixCidr ).toLocaleString(), '!' );
 					return; // too big
 				}
 				// Build the IP in dotted-quad form
@@ -209,7 +215,7 @@
 			if ( prefixCidr !== false ) {
 				full += '/' + prefixCidr;
 			}
-			showResults( '~' + ipCount, full );
+			showResults( '~' + ipCount.toLocaleString(), full );
 		} else {
 			showResults( '?', '' );
 		}
@@ -218,7 +224,7 @@
 
 	$( function () {
 		updateCIDRresult();
-		$( '#mw-checkuser-iplist' ).on( 'keyup click', function () {
+		$( '#mw-checkuser-iplist textarea' ).on( 'keyup click', function () {
 			updateCIDRresult();
 		} );
 	} );
