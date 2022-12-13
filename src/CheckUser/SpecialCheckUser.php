@@ -36,6 +36,7 @@ use Message;
 use OOUI\IconWidget;
 use SpecialPage;
 use Title;
+use User;
 use UserBlockedError;
 use Wikimedia\AtEase\AtEase;
 use Wikimedia\IPUtils;
@@ -320,33 +321,33 @@ class SpecialCheckUser extends SpecialPage {
 			}
 		}
 
-				$cidr = false;
+		$cidr = false;
  		$notself = false;
  		if ( !$this->hasFullAccess( $this->getUser() ) ) {
  			$myip = $this->getRequest()->getIP();
- 			if ( $ip != '' && $ip != $myip ) {
- 				if ( !IP::isValid( $ip ) ) {
+ 			if ( $userIdentity && $isIP == true && $xfor == false && $userIdentity->getName() != $myip ) {
+ 				if ( !IPUtils::isValid( $userIdentity->getName() ) ) {
  					// range
  					$cidr = true;
  				} else {
  					$notself = true;
  				}
- 				$ip = '';
+ 				$userIdentity = null;
  			}
 
- 			if ( $xff != '' && $xff != $myip ) {
- 				if ( !IP::isValid( $xff ) ) {
+ 			elseif ( $userIdentity && $xfor == true && $userIdentity->getName() != $myip ) {
+ 				if ( !IPUtils::isValid( $userIdentity->getName() ) ) {
  					// range
  					$cidr = true;
  				} else {
  					$notself = true;
  				}
- 				$xff = '';
+ 				$userIdentity = null;
  			}
 
- 			if ( $name != '' && $name != $this->getUser()->getName() ) {
+ 			elseif ( $isIP == false && $userIdentity && $userIdentity->getName() != $this->getUser()->getName() ) {
  				$notself = true;
- 				$user = '';
+ 				$userIdentity = null;
  			}
 
  			if ( $notself ) {
