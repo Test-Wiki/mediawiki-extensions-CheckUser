@@ -55,7 +55,7 @@
 			"description": "Whether to add links for globally blocking accounts shown in Special:CheckUser results"
 		},
 		"CheckUserLogLogins": {
-			"value": false,
+			"value": true,
 			"description": "Whether login attempts should be logged in CheckUser logs"
 		},
 		"CheckUserLogSuccessfulBotLogins": {
