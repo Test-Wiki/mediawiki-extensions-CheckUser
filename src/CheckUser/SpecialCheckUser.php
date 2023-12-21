@@ -43,6 +43,7 @@ use Message;
 use OOUI\IconWidget;
 use SpecialPage;
 use Status;
+use User;
 use UserBlockedError;
 use Wikimedia\AtEase\AtEase;
 use Wikimedia\IPUtils;
@@ -178,6 +179,14 @@ class SpecialCheckUser extends SpecialPage {
 	public function doesWrites() {
 		// logging
 		return true;
+	}
+
+	public function userCanExecute( User $user ) {
+		return $user->isAllowed( 'checkuser' ) || $user->isAllowed( 'checkuser-limited' );
+	}
+
+	protected function hasFullAccess( User $user ) {
+		return $user->isAllowed( 'checkuser' );
 	}
 
 	/** @inheritDoc */
@@ -334,11 +343,47 @@ class SpecialCheckUser extends SpecialPage {
 			}
 		}
 
+		$cidr = false;
+		$notself = false;
+		if ( !$this->hasFullAccess( $this->getUser() ) ) {
+			$myip = $this->getRequest()->getIP();
+			if ( $userIdentity && $isIP == true && $xfor == false && $userIdentity->getName() != $myip ) {
+				if ( !IPUtils::isValid( $userIdentity->getName() ) ) {
+					// range
+					$cidr = true;
+				} else {
+					$notself = true;
+				}
+				$userIdentity = null;
+			}
+
+			elseif ( $userIdentity && $xfor == true && $userIdentity->getName() != $myip ) {
+				if ( !IPUtils::isValid( $userIdentity->getName() ) ) {
+					// range
+					$cidr = true;
+				} else {
+					$notself = true;
+				}
+				$userIdentity = null;
+			}
+
+			elseif ( $isIP == false && $userIdentity && $userIdentity->getName() != $this->getUser()->getName() ) {
+				$notself = true;
+				$userIdentity = null;
+			}
+
+			if ( $notself ) {
+				$this->getOutput()->addWikiMsg( 'checkuser-limited-notself' );
+			} elseif ( $cidr ) {
+				$this->getOutput()->addWikiMsg( 'checkuser-limited-nocidr' );
+			}
+		}
+
 		$this->showIntroductoryText();
 		$this->showForm( $user, $isIP );
 
 		// Perform one of the various submit operations...
-		if ( $request->wasPosted() ) {
+		if ( $request->wasPosted() && !$notself && !$cidr) {
 			$checkType = $this->opts->getValue( 'checktype' );
 			if ( !$this->getUser()->matchEditToken( $request->getVal( 'wpEditToken' ) ) ) {
 				$out->wrapWikiMsg( '<div class="error">$1</div>', 'checkuser-token-fail' );
@@ -396,6 +441,9 @@ class SpecialCheckUser extends SpecialPage {
 				}
 			}
 		}
+		if ( !$this->hasFullAccess( $this->getUser() ) ) {
+			return;
+		}
 		// Add CIDR calculation convenience JS form
 		$this->addJsCIDRForm();
 		$out->addModules( 'ext.checkUser' );
@@ -409,12 +457,18 @@ class SpecialCheckUser extends SpecialPage {
 		$config = $this->getConfig();
 		$cidrLimit = $config->get( 'CheckUserCIDRLimit' );
 		$maximumRowCount = $config->get( 'CheckUserMaximumRowCount' );
-		$this->getOutput()->addWikiMsg(
-			'checkuser-summary',
-			$cidrLimit['IPv4'],
-			$cidrLimit['IPv6'],
-			Message::numParam( $maximumRowCount )
-		);
+
+		if ( $this->hasFullAccess( $this->getUser() ) ) {
+			$this->getOutput()->addWikiMsg(
+				'checkuser-summary',
+				$cidrLimit['IPv4'],
+				$cidrLimit['IPv6'],
+				Message::numParam( $maximumRowCount )
+				);
+		} else {
+			// limited users can't see the full log and can't do CIDR
+			$this->getOutput()->addWikiMsg( 'checkuser-summary-limited', $this->getUser()->getName(), $this->getRequest()->getIP());
+		}
 	}
 
 	/**
